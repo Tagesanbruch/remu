@@ -156,7 +156,7 @@ pub fn paddr_write(addr: PAddr, len: usize, data: Word) {
 
 // Load image into memory
 pub fn load_image(data: &[u8], addr: PAddr) -> Result<(), String> {
-    let mut pmem = PMEM.lock().unwrap();
+    let pmem = PMEM.lock().unwrap();
     if let Some(ptr) = pmem.guest_to_host(addr) {
         unsafe {
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());

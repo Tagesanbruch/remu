@@ -1,6 +1,6 @@
 // Common types and macros used throughout RustNEMU
 
-use std::fmt;
+// use std::fmt;  // Unused
 
 // Word type for RISC-V32
 pub type Word = u32;
@@ -10,7 +10,7 @@ pub type VAddr = u32;
 
 // CPU state enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NemuState {
+pub enum RemuState {
     Running,
     Stop,
     End,
@@ -77,7 +77,7 @@ macro_rules! sext {
 
 // Panic with formatted message
 #[macro_export]
-macro_rules! panic_nemu {
+macro_rules! panic_remu {
     ($($arg:tt)*) => {
         panic!("{}", format!($($arg)*))
     };
@@ -85,10 +85,10 @@ macro_rules! panic_nemu {
 
 // Assert with better error messages
 #[macro_export]
-macro_rules! assert_nemu {
+macro_rules! assert_remu {
     ($cond:expr, $($arg:tt)*) => {
         if !$cond {
-            panic_nemu!($($arg)*);
+            panic_remu!($($arg)*);
         }
     };
 }

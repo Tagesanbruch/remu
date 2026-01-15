@@ -1,7 +1,7 @@
 // RISC-V instruction execution
 
 use super::decode::DecodedInst;
-use crate::common::{Word, SWord, NemuState};
+use crate::common::{Word, SWord, RemuState};
 use crate::cpu::state::CPU;
 use crate::memory::{paddr_read, paddr_write};
 use crate::utils::{set_state, set_halt};
@@ -290,10 +290,10 @@ pub fn decode_exec(inst: Word, pc: Word) {
                     // TODO: Implement exception handling
                 }
                 (0b0000000, 0b00001, 0b000) => {  // EBREAK
-                    // NEMU trap - directly end execution
+                    // REMU trap - directly end execution
                     let a0 = R!(cpu, 10);
                     set_halt(pc, a0 as i32);
-                    set_state(NemuState::End);
+                    set_state(RemuState::End);
                     drop(cpu);  // Release lock before returning
                     return;
                 }
@@ -345,7 +345,7 @@ pub fn decode_exec(inst: Word, pc: Word) {
         }
         _ => {
             log::error!("Invalid instruction: 0x{:08x} at PC=0x{:08x}", inst, pc);
-            set_state(NemuState::Abort);
+            set_state(RemuState::Abort);
             drop(cpu);
             return;
         }
@@ -358,7 +358,7 @@ pub fn decode_exec(inst: Word, pc: Word) {
     cpu.gpr[0] = 0;
 }
 
-// Multiplication helpers (from NEMU)
+// Multiplication helpers (from REMU)
 fn mulhu(a: u32, b: u32) -> u32 {
     let t = (a as u64) * (b as u64);
     (t >> 32) as u32

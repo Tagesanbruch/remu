@@ -2,8 +2,8 @@
 
 use crate::config::Config;
 use crate::cpu::cpu_exec;
-use crate::utils::get_state;
-use crate::common::NemuState;
+// use crate::utils::get_state;  // Unused
+// use crate::common::RemuState;  // Unused
 
 pub fn start(cfg: &Config) {
     if cfg.batch {
@@ -19,7 +19,7 @@ fn sdb_mainloop(_cfg: &Config) {
     use std::io::{self, Write};
     
     loop {
-        print!("(rustnemu) ");
+        print!("(remu) ");
         io::stdout().flush().unwrap();
         
         let mut input = String::new();

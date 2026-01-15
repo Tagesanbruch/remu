@@ -5,7 +5,7 @@ pub mod inst;
 pub mod disasm;
 
 use crate::common::Word;
-use crate::cpu::state::CPU;
+// use crate::cpu::state::CPU;  // Unused
 use crate::memory::paddr_read;
 
 pub fn isa_exec_once(pc: Word) {

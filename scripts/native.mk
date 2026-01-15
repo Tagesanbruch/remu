@@ -1,7 +1,7 @@
 #***************************************************************************************
 # Copyright (c) 2014-2022 Zihao Yu, Nanjing University
 #
-# NEMU is licensed under Mulan PSL v2.
+# REMU is licensed under Mulan PSL v2.
 # You can use this software according to the terms and conditions of the Mulan PSL v2.
 # You may obtain a copy of Mulan PSL v2 at:
 #          http://license.coscl.org.cn/MulanPSL2
@@ -13,22 +13,22 @@
 # See the Mulan PSL v2 for more details.
 #**************************************************************************************/
 
--include $(RNEMU_HOME)/../Makefile
-include $(RNEMU_HOME)/scripts/build.mk
+-include $(REMU_HOME)/../Makefile
+include $(REMU_HOME)/scripts/build.mk
 
-include $(RNEMU_HOME)/tools/difftest.mk
+include $(REMU_HOME)/tools/difftest.mk
 
-compile_git:
-	$(call git_commit, "compile NEMU")
-$(BINARY):: compile_git
+# compile_git:
+# 	$(call git_commit, "compile REMU")
+# $(BINARY):: compile_git
 
 # Some convenient rules
 
-override ARGS ?= --log=$(BUILD_DIR)/nemu-log.txt
+override ARGS ?= --log=$(BUILD_DIR)/remu-log.txt
 override ARGS += $(ARGS_DIFF)
 
 
-# Command to execute NEMU
+# Command to execute REMU
 IMG ?=
 ELF ?=
 ifeq ($(strip $(ELF)),)
@@ -36,24 +36,30 @@ ifeq ($(strip $(ELF)),)
 else
     override ARGS += --elf=$(ELF)
 endif
-override ARGS += --batch
-NEMU_EXEC := $(BINARY) $(ARGS) $(IMG)
+
+ifeq ($(strip $(BATCH)),)
+    override ARGS += 
+else
+    override ARGS += --batch
+endif
+
+REMU_EXEC := $(BINARY) $(ARGS) $(IMG)
 
 run-env: $(BINARY) $(DIFF_REF_SO)
 
 
 run: run-env
-	$(call git_commit, "run NEMU")
-	echo $(NEMU_EXEC)
-	$(NEMU_EXEC)
+	$(call git_commit, "run REMU")
+	echo $(REMU_EXEC)
+	$(REMU_EXEC)
 
 gdb: run-env
-	$(call git_commit, "gdb NEMU")
-	gdb -s $(BINARY) --args $(NEMU_EXEC)
+	$(call git_commit, "gdb REMU")
+	gdb -s $(BINARY) --args $(REMU_EXEC)
 
 batch: run-env
-	$(call git_commit, "batch NEMU")
-	$(NEMU_EXEC) -b
+	$(call git_commit, "batch REMU")
+	$(REMU_EXEC) -b
 
 clean-tools = $(dir $(shell find ./tools -maxdepth 2 -mindepth 2 -name "Makefile"))
 $(clean-tools):

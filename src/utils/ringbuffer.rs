@@ -38,7 +38,7 @@ impl<T: Clone> RingBuffer<T> {
         self.size == 0
     }
 
-    pub fn iter(&self) -> RingBufferIter<T> {
+    pub fn iter(&self) -> RingBufferIter<'_, T> {
         RingBufferIter {
             buffer: self,
             index: 0,

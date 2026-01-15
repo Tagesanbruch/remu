@@ -97,7 +97,7 @@ fn load_builtin_image() {
 }
 
 fn welcome() {
-    use crate::utils::log::{ANSI_FG_GREEN, ANSI_FG_RED, ANSI_FG_YELLOW, ANSI_BG_RED, ANSI_NONE};
+    use crate::utils::log::{ANSI_FG_GREEN, ANSI_FG_YELLOW, ANSI_BG_RED, ANSI_NONE};
     
     #[cfg(feature = "trace")]
     let trace_status = format!("{}ON{}", ANSI_FG_GREEN, ANSI_NONE);
@@ -111,7 +111,7 @@ fn welcome() {
     Log!("If trace is enabled, a log file will be generated to record the trace. This may lead to a large log file. If it is not necessary, you can disable it in menuconfig");
     
     // Print welcome message (not logged to file, direct to stdout)
-    println!("Welcome to {}{}{}{}-NEMU!",
+    println!("Welcome to {}{}{}{}-REMU!",
         ANSI_FG_YELLOW, ANSI_BG_RED, "riscv32", ANSI_NONE);
     println!("For help, type \"help\"");
 }

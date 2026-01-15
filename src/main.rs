@@ -14,8 +14,7 @@ pub mod memory;
 pub mod monitor;
 
 // Import macros
-#[macro_use]
-extern crate lazy_static;
+// lazy_static macro is used in modules
 
 fn main() {
     // Parse arguments

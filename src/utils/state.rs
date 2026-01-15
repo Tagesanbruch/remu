@@ -1,10 +1,10 @@
 // Global emulator state
 
-use crate::common::NemuState;
+use crate::common::RemuState;
 use std::sync::{Arc, Mutex};
 
 pub struct GlobalState {
-    pub state: NemuState,
+    pub state: RemuState,
     pub halt_pc: u32,
     pub halt_ret: i32,
 }
@@ -12,7 +12,7 @@ pub struct GlobalState {
 impl Default for GlobalState {
     fn default() -> Self {
         Self {
-            state: NemuState::Stop,
+            state: RemuState::Stop,
             halt_pc: 0,
             halt_ret: 0,
         }
@@ -27,19 +27,19 @@ impl GlobalState {
 
 // Global state singleton
 lazy_static::lazy_static! {
-    pub static ref NEMU_STATE: Arc<Mutex<GlobalState>> = GlobalState::new();
+    pub static ref REMU_STATE: Arc<Mutex<GlobalState>> = GlobalState::new();
 }
 
-pub fn get_state() -> NemuState {
-    NEMU_STATE.lock().unwrap().state
+pub fn get_state() -> RemuState {
+    REMU_STATE.lock().unwrap().state
 }
 
-pub fn set_state(state: NemuState) {
-    NEMU_STATE.lock().unwrap().state = state;
+pub fn set_state(state: RemuState) {
+    REMU_STATE.lock().unwrap().state = state;
 }
 
 pub fn set_halt(pc: u32, ret: i32) {
-    let mut state = NEMU_STATE.lock().unwrap();
+    let mut state = REMU_STATE.lock().unwrap();
     state.halt_pc = pc;
     state.halt_ret = ret;
 }

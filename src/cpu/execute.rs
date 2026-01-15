@@ -1,6 +1,6 @@
 // CPU execution loop
 
-use crate::common::NemuState;
+use crate::common::RemuState;
 use crate::cpu::state::CPU;
 use crate::isa::riscv32;
 use crate::utils::{get_state, set_state};
@@ -24,12 +24,12 @@ pub fn init_cpu() {
 pub fn cpu_exec(n: u64) {
     let state = get_state();
     match state {
-        NemuState::End | NemuState::Abort => {
-            log::warn!("Program execution has ended. To restart the program, exit NEMU and run again.");
+        RemuState::End | RemuState::Abort => {
+            log::warn!("Program execution has ended. To restart the program, exit REMU and run again.");
             return;
         }
         _ => {
-            set_state(NemuState::Running);
+            set_state(RemuState::Running);
         }
     }
 
@@ -53,7 +53,7 @@ fn execute(n: u64) {
         }
         
         let state = get_state();
-        if state != NemuState::Running {
+        if state != RemuState::Running {
             break;
         }
         
@@ -75,16 +75,16 @@ fn exec_once() {
 
 fn statistic() {
     use crate::utils::log::{ANSI_FG_GREEN, ANSI_FG_RED, ANSI_FG_BLUE, ANSI_NONE};
-    use crate::utils::state::NEMU_STATE;
+    use crate::utils::state::REMU_STATE;
     
-    let state_guard = NEMU_STATE.lock().unwrap();
+    let state_guard = REMU_STATE.lock().unwrap();
     let state = state_guard.state;
     let halt_pc = state_guard.halt_pc;
     let halt_ret = state_guard.halt_ret;
     drop(state_guard);
     
     // Determine trap message
-    let trap_msg = if state == NemuState::Abort {
+    let trap_msg = if state == RemuState::Abort {
         format!("{}ABORT{}", ANSI_FG_RED, ANSI_NONE)
     } else {
         if halt_ret == 0 {
@@ -95,7 +95,7 @@ fn statistic() {
     };
     
     // Print trap message with Log! macro format
-    println!("{}[execute.rs:277 cpu_exec] nemu: {} at pc = 0x{:08x}{}",
+    println!("{}[execute.rs:277 cpu_exec] remu: {} at pc = 0x{:08x}{}",
         ANSI_FG_BLUE,
         trap_msg,
         halt_pc,
@@ -135,7 +135,7 @@ fn statistic() {
     }
     
     // Set bad exit status if needed
-    if halt_ret != 0 && state != NemuState::Abort {
+    if halt_ret != 0 && state != RemuState::Abort {
         crate::monitor::set_exit_bad();
     }
 }

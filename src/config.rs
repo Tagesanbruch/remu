@@ -1,7 +1,7 @@
 // Configuration parsing and management
 
 use clap::Parser;
-use std::path::PathBuf;
+// use std::path::PathBuf;  // Unused
 
 #[derive(Parser, Debug)]
 #[command(name = "remu")]
