@@ -145,7 +145,9 @@ pub fn poll_events() {
 }
 
 // Map SDL Scancode to AM Key Code
+// Map SDL Scancode to AM Key Code
 // See nemu/src/device/keyboard.c
+#[cfg(feature = "device")]
 fn keymap(sc: sdl2::keyboard::Scancode) -> u32 {
     use sdl2::keyboard::Scancode::*;
     use crate::device::keyboard::*;

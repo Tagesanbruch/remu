@@ -30,7 +30,7 @@ pub fn init_clint() {
     register_mmio("clint", 0x02000000, 0x10000, Box::new(clint_callback));
 }
 
-fn clint_callback(addr: PAddr, len: usize, is_write: bool, data: Word) -> Word {
+fn clint_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
     let offset = addr - 0x02000000;
     let mut state = CLINT.lock().unwrap();
     
@@ -67,7 +67,7 @@ fn clint_callback(addr: PAddr, len: usize, is_write: bool, data: Word) -> Word {
 // Public API for timer update to call periodically?
 pub fn clint_check_intr() {
     let mut state = CLINT.lock().unwrap();
-    state.msip = state.msip; // Dummy read
+    let _ = state.msip; // Dummy read
     // check_timer_intr(&state); // Internal check only modifies state
 }
 

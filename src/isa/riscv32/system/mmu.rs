@@ -1,8 +1,8 @@
 use crate::common::{Word, PAddr, VAddr, PrivMode};
-use crate::cpu::state::CPU;
 use crate::memory::paddr::paddr_read;
 use super::csr::{CSR_SATP, CSR_MSTATUS};
 use super::intr::isa_raise_intr;
+use crate::Log;
 
 pub const MMU_DIRECT: i32 = 0;
 pub const MMU_TRANSLATE: i32 = 1;
@@ -12,7 +12,7 @@ pub const MEM_TYPE_IFETCH: i32 = 0;
 pub const MEM_TYPE_READ: i32 = 1;
 pub const MEM_TYPE_WRITE: i32 = 2;
 
-pub fn isa_mmu_check(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, _len: usize, _type: i32) -> i32 {
+pub fn isa_mmu_check(cpu: &crate::cpu::state::CpuState, _vaddr: VAddr, _len: usize, _type: i32) -> i32 {
     let satp = cpu.csr[CSR_SATP as usize];
     let mode = cpu.mode;
     let _mstatus = cpu.csr[CSR_MSTATUS as usize];

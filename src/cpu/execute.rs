@@ -45,8 +45,9 @@ pub fn cpu_exec(n: u64) {
 }
 
 fn execute(n: u64) {
-    for _ in 0..n {
-        exec_once();
+    for i in 0..n {
+        // Check interrupts every 1024 instructions to throttle timer syscalls
+        exec_once((i & 0x3ff) == 0);
         
         unsafe {
             GUEST_INST_COUNT += 1;
@@ -72,19 +73,21 @@ fn execute(n: u64) {
     }
 }
 
-fn exec_once() {
+fn exec_once(check_intr: bool) {
     let pc = {
         let cpu = CPU.lock().unwrap();
         cpu.pc
     };
     
 // Check for interrupts
-    let intr = crate::isa::riscv32::system::intr::isa_query_intr();
-    if intr != 0 {
-         let new_pc = crate::isa::riscv32::system::intr::isa_raise_intr(intr, pc);
-         let mut cpu = CPU.lock().unwrap();
-         cpu.pc = new_pc;
-         return;
+    if check_intr {
+        let intr = crate::isa::riscv32::system::intr::isa_query_intr();
+        if intr != 0 {
+             let new_pc = crate::isa::riscv32::system::intr::isa_raise_intr(intr, pc);
+             let mut cpu = CPU.lock().unwrap();
+             cpu.pc = new_pc;
+             return;
+        }
     }
 
     // Execute one instruction

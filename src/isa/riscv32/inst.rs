@@ -3,13 +3,10 @@
 use super::decode::DecodedInst;
 use crate::common::{Word, SWord, RemuState};
 use crate::cpu::state::CPU;
-use crate::memory::paddr::{paddr_read, paddr_write}; // Keep valid for direct use if any
-use crate::memory::vaddr::{vaddr_read, vaddr_write};
-// MEM_TYPE imports from vaddr are no longer needed for calls, but maybe for other logic?
 // inst.rs doesn't seem to use them other than for those calls.
 // Let's keep them if unsure, or remove. The compiler warned about unused imports before.
-use crate::memory::vaddr::{MEM_TYPE_READ, MEM_TYPE_WRITE}; 
-use crate::utils::{set_state, set_halt};
+use crate::memory::vaddr::{vaddr_read, vaddr_write};
+use crate::utils::set_state;
 
 macro_rules! R {
     ($cpu:expr, $idx:expr) => {
@@ -319,7 +316,6 @@ pub fn decode_exec(inst: Word, pc: Word) {
                         crate::common::PrivMode::Machine => 11,
                         crate::common::PrivMode::Supervisor => 9,
                         crate::common::PrivMode::User => 8,
-                        _ => 11
                     };
                     crate::utils::ecall_trace::trace_ecall(pc, cause, cpu.mode as u8);
                     drop(cpu); // Unlock for raise_intr

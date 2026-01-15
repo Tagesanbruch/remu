@@ -1,6 +1,6 @@
 use crate::common::Word;
 use crate::cpu::state::CPU;
-use crate::Log;
+
 
 // CSR Indexes (matching local-include/reg.h and NEMU)
 pub const CSR_MTVEC: u16 = 0x305;

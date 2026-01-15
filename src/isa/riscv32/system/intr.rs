@@ -74,7 +74,7 @@ pub fn isa_raise_intr(no: Word, epc: Word) -> Word {
         
         // Update SSTATUS
         // SPIE = SIE, SIE = 0, SPP = Mode
-        let mut sstatus = cpu.csr[CSR_SSTATUS as usize]; // Actually MSTATUS masked
+        let _sstatus = cpu.csr[CSR_SSTATUS as usize]; // Actually MSTATUS masked
         // Need to operate on MSTATUS essentially
         let mut mstatus = cpu.csr[CSR_MSTATUS as usize];
         
