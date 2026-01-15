@@ -26,8 +26,9 @@ pub fn init_monitor(cfg: &Config) {
     }
     
     // Initialize devices
-    #[cfg(feature = "device")]
-    crate::device::init_device();
+    if crate::generated::config::DEVICE {
+        crate::device::init_device();
+    }
     
     welcome();
 }

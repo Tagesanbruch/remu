@@ -21,7 +21,7 @@ pub struct FTraceEntry {
 
 impl ToString for FTraceEntry {
     fn to_string(&self) -> String {
-        let indent = "  ".repeat(self.call_depth);
+        let indent = "  ".repeat(self.call_depth.min(32)); // Cap indentation at 32 levels
         if self.is_call {
             format!("{}call [{}] @ 0x{:08x}", indent, self.target_name, self.target)
         } else {
@@ -83,7 +83,7 @@ impl FTrace {
     }
     
     pub fn trace_call(&mut self, pc: VAddr, target: VAddr) {
-        if !FTRACE { return; }
+        if !crate::generated::config::FTRACE { return; }
         
         let target_name = if let Some(sym) = self.find_symbol(target) {
              sym.name.clone()
@@ -104,7 +104,7 @@ impl FTrace {
     }
     
     pub fn trace_ret(&mut self, pc: VAddr) {
-        if !FTRACE { return; }
+        if !crate::generated::config::FTRACE { return; }
         
         if self.call_depth > 0 {
             self.call_depth -= 1;

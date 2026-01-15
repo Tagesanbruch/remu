@@ -58,8 +58,9 @@ fn execute(n: u64) {
         }
         
         // Update devices
-        #[cfg(feature = "device")]
-        crate::device::device_update();
+        if crate::generated::config::DEVICE {
+            crate::device::device_update();
+        }
     }
 }
 
@@ -129,8 +130,7 @@ fn statistic() {
         ANSI_FG_BLUE, freq, ANSI_NONE);
     
     // Show traces
-    #[cfg(feature = "trace")]
-    {
+    if crate::generated::config::TRACE {
         crate::utils::itrace::show_itrace();
         crate::utils::mtrace::show_mtrace();
         crate::utils::ftrace::show_ftrace();

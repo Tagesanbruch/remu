@@ -56,10 +56,10 @@ pub fn trace_write(addr: PAddr, len: usize, data: Word) {
 pub fn show_mtrace() {
     if !MTRACE { return; }
     
-    println!("--- MTRACE Content ---");
+    crate::Log!("--- MTRACE Content ---");
     let buf = MTRACE_BUF.lock().unwrap();
     for entry in buf.iter() {
-        println!("{}", entry.to_string());
+        crate::Log!("{}", entry.to_string());
     }
-    println!("----------------------");
+    crate::Log!("----------------------");
 }
