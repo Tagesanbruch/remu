@@ -3,7 +3,8 @@
 use super::decode::DecodedInst;
 use crate::common::{Word, SWord, RemuState};
 use crate::cpu::state::CPU;
-use crate::memory::{paddr_read, paddr_write};
+use crate::memory::{paddr_read, paddr_write}; // Keep valid for direct use if any
+use super::system::mmu::{isa_vaddr_read, isa_vaddr_write, MEM_TYPE_READ, MEM_TYPE_WRITE};
 use crate::utils::{set_state, set_halt};
 
 macro_rules! R {
@@ -114,9 +115,9 @@ pub fn decode_exec(inst: Word, pc: Word) {
             let src2 = R!(cpu, dec.rs2);
             let addr = src1.wrapping_add(dec.imm);
             match dec.funct3 {
-                0b000 => paddr_write(addr, 1, src2),  // SB
-                0b001 => paddr_write(addr, 2, src2),  // SH
-                0b010 => paddr_write(addr, 4, src2),  // SW
+                0b000 => isa_vaddr_write(&*cpu, addr, 1, src2, MEM_TYPE_WRITE),  // SB
+                0b001 => isa_vaddr_write(&*cpu, addr, 2, src2, MEM_TYPE_WRITE),  // SH
+                0b010 => isa_vaddr_write(&*cpu, addr, 4, src2, MEM_TYPE_WRITE),  // SW
                 _ => log::error!("Invalid store funct3: 0b{:03b}", dec.funct3),
             }
         }
@@ -216,72 +217,72 @@ pub fn decode_exec(inst: Word, pc: Word) {
             
             match (dec.funct7 >> 2, dec.funct3) {
                 (0b00010, 0b010) => {  // LR.W
-                    let val = paddr_read(addr, 4);
+                    let val = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
                     W!(cpu, dec.rd, val);
                     // TODO: Set reservation
                 }
                 (0b00011, 0b010) => {  // SC.W
                     let src2 = R!(cpu, dec.rs2);
-                    paddr_write(addr, 4, src2);
+                    isa_vaddr_write(&*cpu, addr, 4, src2, MEM_TYPE_WRITE);
                     W!(cpu, dec.rd, 0);  // Always succeed for now
                     // TODO: Check reservation
                 }
                 (0b00001, 0b010) => {  // AMOSWAP.W
-                    let t = paddr_read(addr, 4);
+                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
                     let src2 = R!(cpu, dec.rs2);
-                    paddr_write(addr, 4, src2);
+                    isa_vaddr_write(&*cpu, addr, 4, src2, MEM_TYPE_WRITE);
                     W!(cpu, dec.rd, t);
                 }
                 (0b00000, 0b010) => {  // AMOADD.W
-                    let t = paddr_read(addr, 4);
+                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
                     let src2 = R!(cpu, dec.rs2);
-                    paddr_write(addr, 4, t.wrapping_add(src2));
+                    isa_vaddr_write(&*cpu, addr, 4, t.wrapping_add(src2), MEM_TYPE_WRITE);
                     W!(cpu, dec.rd, t);
                 }
                 (0b00100, 0b010) => {  // AMOXOR.W
-                    let t = paddr_read(addr, 4);
+                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
                     let src2 = R!(cpu, dec.rs2);
-                    paddr_write(addr, 4, t ^ src2);
+                    isa_vaddr_write(&*cpu, addr, 4, t ^ src2, MEM_TYPE_WRITE);
                     W!(cpu, dec.rd, t);
                 }
                 (0b01100, 0b010) => {  // AMOAND.W
-                    let t = paddr_read(addr, 4);
+                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
                     let src2 = R!(cpu, dec.rs2);
-                    paddr_write(addr, 4, t & src2);
+                    isa_vaddr_write(&*cpu, addr, 4, t & src2, MEM_TYPE_WRITE);
                     W!(cpu, dec.rd, t);
                 }
                 (0b01000, 0b010) => {  // AMOOR.W
-                    let t = paddr_read(addr, 4);
+                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
                     let src2 = R!(cpu, dec.rs2);
-                    paddr_write(addr, 4, t | src2);
+                    isa_vaddr_write(&*cpu, addr, 4, t | src2, MEM_TYPE_WRITE);
                     W!(cpu, dec.rd, t);
                 }
                 (0b10000, 0b010) => {  // AMOMIN.W
-                    let t = paddr_read(addr, 4);
+                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
                     let src2 = R!(cpu, dec.rs2);
                     let min = if (t as SWord) < (src2 as SWord) { t } else { src2 };
-                    paddr_write(addr, 4, min);
+                    isa_vaddr_write(&*cpu, addr, 4, min, MEM_TYPE_WRITE);
                     W!(cpu, dec.rd, t);
                 }
                 (0b10100, 0b010) => {  // AMOMAX.W
-                    let t = paddr_read(addr, 4);
+                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
                     let src2 = R!(cpu, dec.rs2);
                     let max = if (t as SWord) > (src2 as SWord) { t } else { src2 };
-                    paddr_write(addr, 4, max);
+                    isa_vaddr_write(&*cpu, addr, 4, max, MEM_TYPE_WRITE);
                     W!(cpu, dec.rd, t);
                 }
                 (0b11000, 0b010) => {  // AMOMINU.W
-                    let t = paddr_read(addr, 4);
+                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
                     let src2 = R!(cpu, dec.rs2);
                     let min = if t < src2 { t } else { src2 };
-                    paddr_write(addr, 4, min);
+                    isa_vaddr_write(&*cpu, addr, 4, min, MEM_TYPE_WRITE);
                     W!(cpu, dec.rd, t);
                 }
                 (0b11100, 0b010) => {  // AMOMAXU.W
-                    let t = paddr_read(addr, 4);
+                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
                     let src2 = R!(cpu, dec.rs2);
                     let max = if t > src2 { t } else { src2 };
-                    paddr_write(addr, 4, max);
+                    isa_vaddr_write(&*cpu, addr, 4, max, MEM_TYPE_WRITE);
                     W!(cpu, dec.rd, t);
                 }
                 _ => {
@@ -298,22 +299,89 @@ pub fn decode_exec(inst: Word, pc: Word) {
         0b1110011 => {
             match (dec.funct7, dec.rs2, dec.funct3) {
                 (0b0000000, 0b00000, 0b000) => {  // ECALL
-                    log::warn!("ECALL at PC=0x{:08x}", pc);
-                    // TODO: Implement exception handling
+                    // Determine mode for ECALL cause (User=8, Supervisor=9, Machine=11)
+                    let cause = match cpu.mode {
+                        crate::common::PrivMode::Machine => 11,
+                        crate::common::PrivMode::Supervisor => 9,
+                        crate::common::PrivMode::User => 8,
+                        _ => 11
+                    };
+                    drop(cpu); // Unlock for raise_intr
+                    let new_pc = super::system::intr::isa_raise_intr(cause, pc);
+                    CPU.lock().unwrap().pc = new_pc;
+                    return;
                 }
                 (0b0000000, 0b00001, 0b000) => {  // EBREAK
-                    // REMU trap - directly end execution
+                    // REMU trap - directly end execution (for built-in image test)
                     let a0 = R!(cpu, 10);
                     set_halt(pc, a0 as i32);
                     set_state(RemuState::End);
                     drop(cpu);  // Release lock before returning
                     return;
                 }
+                (0b0011000, 0b00010, 0b000) => { // MRET
+                    let mstatus = cpu.get_csr(super::system::csr::CSR_MSTATUS);
+                    let mepc = cpu.get_csr(super::system::csr::CSR_MEPC);
+                    
+                    // Restore MIE = MPIE
+                    let mpie = (mstatus >> 7) & 1;
+                    // Restore Priv = MPP
+                    let mpp = (mstatus >> 11) & 3;
+                     
+                    // MIE(3) <- MPIE(7)
+                    // MIE = MPIE; MPIE = 1; MPP = U(0);
+                    let mut new_mstatus = (mstatus & !(1 << 3)) | (mpie << 3);
+                    new_mstatus |= 1 << 7; // MPIE = 1
+                    new_mstatus &= !(3 << 11); // MPP = 0 (User)
+                    
+                    cpu.set_csr(super::system::csr::CSR_MSTATUS, new_mstatus);
+                    
+                    cpu.mode = match mpp {
+                        3 => crate::common::PrivMode::Machine,
+                        1 => crate::common::PrivMode::Supervisor,
+                        _ => crate::common::PrivMode::User
+                    };
+                    
+                    cpu.pc = mepc;
+                    // dnpc not needed as we update cpu.pc directly and loop continues unless we return?
+                    // decode_exec updates cpu.pc = dnpc at end.
+                    // We should just return early after setting cpu.pc
+                    return;
+                }
+                (0b0001000, 0b00010, 0b000) => { // SRET
+                     // Similar to MRET but for Supervisor
+                     let sstatus = cpu.get_csr(super::system::csr::CSR_SSTATUS); // actually accesses MSTATUS
+                     let sepc = cpu.get_csr(super::system::csr::CSR_SEPC);
+                     
+                     // Restore SIE = SPIE
+                     let spie = (sstatus >> 5) & 1;
+                     let spp = (sstatus >> 8) & 1;
+                     
+                     // SIE(1) <- SPIE(5)
+                     let mut new_sstatus = (sstatus & !(1 << 1)) | (spie << 1);
+                     new_sstatus |= 1 << 5; // SPIE = 1
+                     new_sstatus &= !(1 << 8); // SPP = 0 (User)
+                     
+                     // Need to write back to MSTATUS (handled by set_csr SSTATUS alias)
+                     cpu.set_csr(super::system::csr::CSR_SSTATUS, new_sstatus);
+                     
+                     cpu.mode = match spp {
+                         1 => crate::common::PrivMode::Supervisor,
+                         _ => crate::common::PrivMode::User
+                     };
+                     
+                     cpu.pc = sepc;
+                     return;
+                }
                 _ if dec.funct3 >= 0b001 && dec.funct3 <= 0b111 => {
                     // CSR instructions
                     dec.decode_i();
                     let csr_addr = (dec.imm & 0xfff) as u16;
-                    let csr_val = cpu.get_csr(csr_addr);
+                    let mut csr_val = cpu.get_csr(csr_addr);
+                    
+                    if csr_addr == crate::isa::riscv32::system::csr::CSR_MIP {
+                         csr_val |= crate::device::clint::get_mip_status();
+                    }
                     
                     let new_val = match dec.funct3 {
                         0b001 => {  // CSRRW

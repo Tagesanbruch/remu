@@ -78,6 +78,15 @@ fn exec_once() {
         cpu.pc
     };
     
+// Check for interrupts
+    let intr = crate::isa::riscv32::system::intr::isa_query_intr();
+    if intr != 0 {
+         let new_pc = crate::isa::riscv32::system::intr::isa_raise_intr(intr, pc);
+         let mut cpu = CPU.lock().unwrap();
+         cpu.pc = new_pc;
+         return;
+    }
+
     // Execute one instruction
     riscv32::isa_exec_once(pc);
 }

@@ -50,6 +50,7 @@ pub fn device_update() {
 
     // Poll SDL events
     serial::serial_update();
+    clint::clint_check_intr();
     vga::vga_update_screen();
     sdl::poll_events();
 }
