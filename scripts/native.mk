@@ -35,7 +35,13 @@ ifeq ($(strip $(ELF)),)
 else
     override ARGS += --elf=$(ELF)
 endif
-# override ARGS += --batch
+
+ifeq ($(strip $(BATCH)),)
+    override ARGS += 
+else
+    override ARGS += --batch
+endif
+
 REMU_EXEC := $(BINARY) $(ARGS) $(IMG)
 
 run-env: $(BINARY) $(DIFF_REF_SO) $(REMU_HOME)/src/generated/config.rs

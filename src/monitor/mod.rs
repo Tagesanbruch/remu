@@ -100,12 +100,17 @@ fn copy_builtin_image_to_memory() {
 }
 
 fn welcome() {
-    println!("Trace: {}", if crate::generated::config::TRACE { crate::common::colored("ON", crate::common::ANSI_FG_GREEN) } else { crate::common::colored("OFF", crate::common::ANSI_FG_RED) });
+    Log!("Trace: {}", if crate::generated::config::TRACE { crate::common::colored("ON", crate::common::ANSI_FG_GREEN) } else { crate::common::colored("OFF", crate::common::ANSI_FG_RED) });
     if crate::generated::config::TRACE {
-        println!("If trace is enabled, a log file will be generated to record the trace. This may lead to a large log file. If it is not necessary, you can disable it in menuconfig");
+        Log!("If trace is enabled, a log file will be generated to record the trace. This may lead to a large log file. If it is not necessary, you can disable it in menuconfig");
     }
-
-    println!("{}", crate::common::colored("Welcome to riscv32-REMU!", crate::common::ANSI_FG_CYAN));
+    // ANSI color codes (matching C NEMU)
+    pub const ANSI_NONE: &str = "\x1b[0m";
+    pub const ANSI_FG_YELLOW: &str = "\x1b[33m";
+    pub const ANSI_BG_RED: &str = "\x1b[41m";
+    // Print welcome message (not logged to file, direct to stdout)
+    println!("Welcome to {}{}{}{}-NEMU!",
+        ANSI_FG_YELLOW, ANSI_BG_RED, "riscv32", ANSI_NONE);
     println!("For help, type \"help\"");
 }
 

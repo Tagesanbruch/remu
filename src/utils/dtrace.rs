@@ -22,7 +22,9 @@ impl ToString for DTraceEntry {
 
 lazy_static::lazy_static! {
     static ref DTRACE_BUF: std::sync::Mutex<crate::utils::ringbuffer::RingBuffer<DTraceEntry>> = {
-        let size = if DTRACE { DTRACE_RINGBUF as usize } else { 1 };
+        let size = if crate::generated::config::DTRACE { 
+            crate::generated::config::DTRACE_RINGBUF as usize 
+        } else { 1 };
         std::sync::Mutex::new(crate::utils::ringbuffer::RingBuffer::new(size))
     };
 }

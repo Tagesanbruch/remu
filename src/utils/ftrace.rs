@@ -38,7 +38,9 @@ pub struct FTrace {
 
 impl FTrace {
     pub fn new() -> Self {
-        let size = if FTRACE { 1024 } else { 1 }; // Hardcoded default or from config
+        let size = if crate::generated::config::FTRACE { 
+            crate::generated::config::FTRACE_BUF as usize 
+        } else { 1 };
         Self {
             symbols: Vec::new(),
             call_depth: 0,

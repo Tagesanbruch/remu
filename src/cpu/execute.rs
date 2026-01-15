@@ -96,7 +96,7 @@ fn statistic() {
     };
     
     // Print trap message with Log! macro format
-    println!("{}[execute.rs:277 cpu_exec] remu: {} at pc = 0x{:08x}{}",
+    Log!("{}Remu: {} at pc = 0x{:08x}{}",
         ANSI_FG_BLUE,
         trap_msg,
         halt_pc,
@@ -122,11 +122,11 @@ fn statistic() {
         .collect::<Vec<_>>()
         .join(",");
     
-    println!("{}[execute.rs:217 statistic] host time spent = {} us{}",
+    Log!("{}host time spent = {} us{}",
         ANSI_FG_BLUE, time_formatted, ANSI_NONE);
-    println!("{}[execute.rs:218 statistic] total guest instructions = {}{}",
+    Log!("{}total guest instructions = {}{}",
         ANSI_FG_BLUE, guest_inst, ANSI_NONE);
-    println!("{}[execute.rs:221 statistic] simulation frequency = {:.0} inst/s{}",
+    Log!("{}simulation frequency = {:.0} inst/s{}",
         ANSI_FG_BLUE, freq, ANSI_NONE);
     
     // Show traces

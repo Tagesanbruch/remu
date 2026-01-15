@@ -20,7 +20,9 @@ impl ToString for MTraceEntry {
 // Global MTRACE ring buffer
 lazy_static::lazy_static! {
     static ref MTRACE_BUF: std::sync::Mutex<crate::utils::ringbuffer::RingBuffer<MTraceEntry>> = {
-        let size = if MTRACE { MTRACE_RINGBUF as usize } else { 1 };
+        let size = if crate::generated::config::MTRACE { 
+            crate::generated::config::MTRACE_RINGBUF as usize 
+        } else { 1 };
         std::sync::Mutex::new(crate::utils::ringbuffer::RingBuffer::new(size))
     };
 }
