@@ -15,6 +15,14 @@ include $(REMU_HOME)/scripts/config.mk
 include $(REMU_HOME)/scripts/build.mk
 include $(REMU_HOME)/scripts/native.mk
 
+# Autoconf: Regenerate config.rs when .config changes
+$(REMU_HOME)/src/generated/config.rs: $(REMU_HOME)/.config
+	@echo "Regenerating config.rs..."
+	@python3 $(REMU_HOME)/scripts/gen_config.py
+
+# Ensure build depends on config.rs
+$(BINARY): $(REMU_HOME)/src/generated/config.rs
+
 # Local convenience targets
 .PHONY: app clean count
 

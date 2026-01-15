@@ -6,9 +6,9 @@ use crate::common::{PAddr, Word};
 use std::sync::Mutex;
 
 // VGA Registers
-const VGA_CTL_WIDTH: u32 = 0;
-const VGA_CTL_HEIGHT: u32 = 4;
-const VGA_CTL_SYNC: u32 = 8;
+// VGA Registers
+const VGA_CTL_SIZE: u32 = 0; // Packed width/height (NEMU convention)
+const VGA_CTL_SYNC: u32 = 4; // Sync Trigger
 
 struct VgaState {
     width: u32,
@@ -19,10 +19,10 @@ struct VgaState {
 
 lazy_static::lazy_static! {
     static ref VGA_STATE: Mutex<VgaState> = Mutex::new(VgaState {
-        width: if VGA_SIZE_400X300 { 400 } else { 800 },
-        height: if VGA_SIZE_400X300 { 300 } else { 600 },
+        width: VGA_WIDTH,
+        height: VGA_HEIGHT,
         sync: 0,
-        vmem: vec![0; (if VGA_SIZE_400X300 { 400 * 300 } else { 800 * 600 } * 4) as usize],
+        vmem: vec![0; (VGA_WIDTH * VGA_HEIGHT * 4) as usize],
     });
 }
 
@@ -35,19 +35,7 @@ pub fn init_vga() {
     // Register VGA Control
     register_mmio("vga_ctl", VGA_CTL_MMIO, 8, Box::new(vga_ctl_callback));
     
-    // Fill vmem with a pattern (Purple 0xFFAA00AA) to verify display
-    let mut state = VGA_STATE.lock().unwrap();
-    // Use u32 for faster fill
-    // We can't easily cast vec<u8> to vec<u32> safely without unsafe, just loop
-    for i in (0..state.vmem.len()).step_by(4) {
-        if i + 3 < state.vmem.len() {
-            state.vmem[i] = 0xAA;   // B
-            state.vmem[i+1] = 0x00; // G
-            state.vmem[i+2] = 0xAA; // R
-            state.vmem[i+3] = 0xFF; // A
-        }
-    }
-    drop(state); // unlock
+    // vmem is cleared to 0 (black/transparent) by vec! default
     
     // TODO: Init SDL2 window/texture if display enabled
     crate::device::sdl::init_sdl();
@@ -105,25 +93,33 @@ fn vga_ctl_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Wor
     if is_write {
         if offset == VGA_CTL_SYNC {
             state.sync = data;
-            if data != 0 {
-                // TODO: Update SDL screen
-                update_screen(&state);
-                state.sync = 0; // Clear sync
-            }
+            // Note: We do NOT update screen here immediately. 
+            // We wait for vga_update_screen called by device_update (throttled).
+            // This prevents performance kill if guest syncs every pixel.
         }
         0
     } else {
         match offset {
-            VGA_CTL_WIDTH => state.width << 16 | state.height, // Usually packed, check AM implementation
-            VGA_CTL_HEIGHT => state.height,
+            VGA_CTL_SIZE => (state.width << 16) | state.height,
             VGA_CTL_SYNC => state.sync,
             _ => 0
         }
     }
 }
 
-fn update_screen(state: &VgaState) {
+pub fn vga_update_screen() {
+    let mut state = VGA_STATE.lock().unwrap();
     if state.sync != 0 {
+        // Debug: Sum vmem content (Keep debug for now to confirm)
+        let mut sum: u64 = 0;
+        let mut non_zero_count: u64 = 0;
+        for &byte in &state.vmem {
+            sum += byte as u64;
+            if byte != 0 { non_zero_count += 1; }
+        }
+        println!("[VGA Debug] Sync handled. vga_ctl_sync={}, vmem_sum={}, non_zero_bytes={}", state.sync, sum, non_zero_count);
+        
         crate::device::sdl::update_screen(&state.vmem);
+        state.sync = 0;
     }
 }

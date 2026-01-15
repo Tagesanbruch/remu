@@ -59,8 +59,8 @@ pub fn init_sdl() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     
-    let width = if VGA_SIZE_400X300 { 400 } else { 800 };
-    let height = if VGA_SIZE_400X300 { 300 } else { 600 };
+    let width = VGA_WIDTH;
+    let height = VGA_HEIGHT;
     
     let window = video_subsystem.window("RISC-V32 REMU", width, height)
         .position_centered()
@@ -76,8 +76,11 @@ pub fn init_sdl() {
     
     // Hack to store texture with static lifetime
     let static_creator: &'static _ = Box::leak(Box::new(texture_creator));
-    let texture = static_creator.create_texture_streaming(
+    let mut texture = static_creator.create_texture_streaming(
         PixelFormatEnum::ARGB8888, width, height).unwrap();
+    
+    // Disable blending so alpha=0 doesn't make pixels transparent (black)
+    texture.set_blend_mode(sdl2::render::BlendMode::None);
     
     // Store in globals
     *SDL_CONTEXT.lock().unwrap() = Some(UnsafeSendSync(sdl_context));
@@ -99,8 +102,8 @@ pub fn update_screen(vmem: &[u8]) {
         let canvas = &mut wrapper.0;
         let mut texture_lock = SDL_TEXTURE.lock().unwrap();
         if let Some(texture) = texture_lock.texture.as_mut() {
-            let width = if VGA_SIZE_400X300 { 400 } else { 800 };
-            let height = if VGA_SIZE_400X300 { 300 } else { 600 };
+            let width = VGA_WIDTH;
+            let height = VGA_HEIGHT;
             let size = (width * height * 4) as usize;
             
             if vmem.len() >= size {

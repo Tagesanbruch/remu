@@ -3,10 +3,17 @@ mainmenu "REMU Configuration Menu"
 choice
   prompt "Base ISA"
   default ISA_riscv
-config ISA_x86
-  bool "x86"
-config ISA_mips32
-  bool "mips32"
+config VGA_SHOW_SCREEN
+  bool "Show screen"
+  default y
+
+config VGA_WIDTH
+  int "VGA Width"
+  default 800
+
+config VGA_HEIGHT
+  int "VGA Height"
+  default 600
 config ISA_riscv
   bool "riscv"
 config ISA_loongarch32r
