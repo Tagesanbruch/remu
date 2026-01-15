@@ -2,7 +2,8 @@
 
 use crate::common::{Word, PAddr};
 use crate::generated::config::*;
-use std::sync::{Arc, Mutex};
+use crate::generated::config::*;
+// use std::sync::{Arc, Mutex}; // Removed Mutex lock
 
 // Memory regions
 const MROM_BASE: u32 = 0x20000000;
@@ -140,29 +141,49 @@ impl PhysicalMemory {
     }
 }
 
-lazy_static::lazy_static! {
-    pub static ref PMEM: Arc<Mutex<PhysicalMemory>> = {
-        Arc::new(Mutex::new(PhysicalMemory::new(MBASE, MSIZE as usize)))
-    };
+#[allow(static_mut_refs)]
+pub static mut PMEM: Option<PhysicalMemory> = None;
+
+pub fn init() {
+    unsafe {
+        PMEM = Some(PhysicalMemory::new(MBASE, MSIZE as usize));
+    }
 }
 
 pub fn paddr_read(addr: PAddr, len: usize) -> Word {
-    PMEM.lock().unwrap().read(addr, len)
+    unsafe {
+        match &PMEM {
+            Some(pmem) => pmem.read(addr, len),
+             None => {
+                panic!("Physical memory not initialized");
+            }
+        }
+    }
 }
 
 pub fn paddr_write(addr: PAddr, len: usize, data: Word) {
-    PMEM.lock().unwrap().write(addr, len, data);
+    unsafe {
+        match &mut PMEM {
+            Some(pmem) => pmem.write(addr, len, data),
+            None => {
+                panic!("Physical memory not initialized");
+            }
+        }
+    }
 }
 
 // Load image into memory
 pub fn load_image(data: &[u8], addr: PAddr) -> Result<(), String> {
-    let pmem = PMEM.lock().unwrap();
-    if let Some(ptr) = pmem.guest_to_host(addr) {
-        unsafe {
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+    unsafe {
+        if let Some(pmem) = &mut PMEM {
+            if let Some(ptr) = pmem.guest_to_host(addr) {
+                std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+                Ok(())
+            } else {
+                Err(format!("Cannot load image at invalid address 0x{:08x}", addr))
+            }
+        } else {
+            Err("Physical memory not initialized".to_string())
         }
-        Ok(())
-    } else {
-        Err(format!("Cannot load image at invalid address 0x{:08x}", addr))
     }
 }

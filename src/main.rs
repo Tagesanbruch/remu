@@ -38,6 +38,13 @@ fn main() {
     // Initialize monitor (memory, devices, ISA)
     monitor::init_monitor(&config);
 
+    // Register Ctrl+C handler
+    ctrlc::set_handler(move || {
+        crate::cpu::execute::statistic();
+        crate::device::sdl::quit();
+        std::process::exit(0);
+    }).expect("Error setting Ctrl-C handler");
+
     // Start the engine (debugger or batch mode)
     engine::start(&config);
 

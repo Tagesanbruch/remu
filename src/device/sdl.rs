@@ -144,6 +144,16 @@ pub fn poll_events() {
     }
 }
 
+#[cfg(feature = "device")]
+pub fn quit() {
+    // SDL cleanup logic via Quit event or similar if needed, 
+    // but sdl2 automatically handles cleanup on drop.
+    // For now, this can be empty or just set state.
+    use crate::utils::set_state;
+    use crate::common::RemuState;
+    set_state(RemuState::Stop);
+}
+
 // Map SDL Scancode to AM Key Code
 // Map SDL Scancode to AM Key Code
 // See nemu/src/device/keyboard.c
@@ -187,3 +197,6 @@ pub fn update_screen(_vmem: &[u8]) {}
 
 #[cfg(not(feature = "device"))]
 pub fn poll_events() {}
+
+#[cfg(not(feature = "device"))]
+pub fn quit() {}

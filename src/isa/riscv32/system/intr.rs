@@ -3,9 +3,8 @@ use crate::cpu::state::CPU;
 use super::csr::*;
 
 // Interrupt/Exception checking
-pub fn isa_query_intr() -> Word {
-    let cpu = CPU.lock().unwrap();
-    
+// Interrupt/Exception checking
+pub fn isa_query_intr(cpu: &crate::cpu::state::CpuState) -> Word {
     let mstatus = cpu.csr[CSR_MSTATUS as usize];
     let mie = (mstatus >> 3) & 1;
     let mie_reg = cpu.csr[CSR_MIE as usize];
@@ -44,9 +43,7 @@ pub fn isa_query_intr() -> Word {
     0 // INTR_EMPTY
 }
 
-pub fn isa_raise_intr(no: Word, epc: Word) -> Word {
-    let mut cpu = CPU.lock().unwrap();
-    
+pub fn isa_raise_intr(cpu: &mut crate::cpu::state::CpuState, no: Word, epc: Word) -> Word {
     let is_intr = (no & 0x80000000) != 0;
     let cause_code = no & 0x7FFFFFFF;
     

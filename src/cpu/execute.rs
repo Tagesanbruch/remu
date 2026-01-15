@@ -1,7 +1,7 @@
 // CPU execution loop
 
 use crate::common::RemuState;
-use crate::cpu::state::CPU;
+use crate::cpu::state::{CPU, CpuState};
 use crate::isa::riscv32;
 use crate::utils::{get_state, set_state};
 use crate::Log;
@@ -45,9 +45,13 @@ pub fn cpu_exec(n: u64) {
 }
 
 fn execute(n: u64) {
+    // Lock CPU state once for the entire execution loop
+    let mut cpu_guard = CPU.lock().unwrap();
+    let cpu = &mut *cpu_guard;
+
     for i in 0..n {
         // Check interrupts every 1024 instructions to throttle timer syscalls
-        exec_once((i & 0x3ff) == 0);
+        exec_once(cpu, (i & 0x3ff) == 0);
         
         unsafe {
             GUEST_INST_COUNT += 1;
@@ -67,34 +71,32 @@ fn execute(n: u64) {
         // }
         
         // Update devices
-        if crate::generated::config::DEVICE {
+        // Update devices (Throttle: Check every 65536 instructions)
+        // ~333Hz at 20MIPS, sufficient for 60Hz VGA/Serial
+        if crate::generated::config::DEVICE && (i & 0xffff) == 0 {
             crate::device::device_update();
         }
     }
 }
 
-fn exec_once(check_intr: bool) {
-    let pc = {
-        let cpu = CPU.lock().unwrap();
-        cpu.pc
-    };
+fn exec_once(cpu: &mut CpuState, check_intr: bool) {
+    let pc = cpu.pc;
     
-// Check for interrupts
+    // Check for interrupts
     if check_intr {
-        let intr = crate::isa::riscv32::system::intr::isa_query_intr();
+        let intr = crate::isa::riscv32::system::intr::isa_query_intr(cpu);
         if intr != 0 {
-             let new_pc = crate::isa::riscv32::system::intr::isa_raise_intr(intr, pc);
-             let mut cpu = CPU.lock().unwrap();
+             let new_pc = crate::isa::riscv32::system::intr::isa_raise_intr(cpu, intr, pc);
              cpu.pc = new_pc;
              return;
         }
     }
 
     // Execute one instruction
-    riscv32::isa_exec_once(pc);
+    riscv32::isa_exec_once(cpu, pc);
 }
 
-fn statistic() {
+pub fn statistic() {
     use crate::utils::log::{ANSI_FG_GREEN, ANSI_FG_RED, ANSI_FG_BLUE, ANSI_NONE};
     use crate::utils::state::REMU_STATE;
     

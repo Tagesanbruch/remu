@@ -2,7 +2,7 @@
 
 use super::decode::DecodedInst;
 use crate::common::{Word, SWord, RemuState};
-use crate::cpu::state::CPU;
+// use crate::cpu::state::CPU;
 // inst.rs doesn't seem to use them other than for those calls.
 // Let's keep them if unsure, or remove. The compiler warned about unused imports before.
 use crate::memory::vaddr::{vaddr_read, vaddr_write};
@@ -20,9 +20,8 @@ macro_rules! W {
     };
 }
 
-pub fn decode_exec(inst: Word, pc: Word) {
+pub fn decode_exec(cpu: &mut crate::cpu::state::CpuState, inst: Word, pc: Word) {
     let mut dec = DecodedInst::new(inst);
-    let mut cpu = CPU.lock().unwrap();
     
     // Default next PC
     let mut dnpc = pc.wrapping_add(4);
@@ -318,16 +317,14 @@ pub fn decode_exec(inst: Word, pc: Word) {
                         crate::common::PrivMode::User => 8,
                     };
                     crate::utils::ecall_trace::trace_ecall(pc, cause, cpu.mode as u8);
-                    drop(cpu); // Unlock for raise_intr
-                    let new_pc = super::system::intr::isa_raise_intr(cause, pc);
-                    CPU.lock().unwrap().pc = new_pc;
+                    let new_pc = super::system::intr::isa_raise_intr(cpu, cause, pc);
+                    cpu.pc = new_pc;
                     return;
                 }
-                (0b0000000, 0b00001, 0b000) => {  // EBREAK
+                 (0b0000000, 0b00001, 0b000) => {  // EBREAK
                      // EBREAK cause = 3
-                     drop(cpu);
-                     let new_pc = super::system::intr::isa_raise_intr(3, pc);
-                     CPU.lock().unwrap().pc = new_pc;
+                     let new_pc = super::system::intr::isa_raise_intr(cpu, 3, pc);
+                     cpu.pc = new_pc;
                      return;
                 }
                 (0b0011000, 0b00010, 0b000) => { // MRET
@@ -345,7 +342,7 @@ pub fn decode_exec(inst: Word, pc: Word) {
                     new_mstatus |= 1 << 7; // MPIE = 1
                     new_mstatus &= !(3 << 11); // MPP = 0 (User)
                     
-                    super::system::csr::isa_csr_write(&mut cpu, super::system::csr::CSR_MSTATUS, new_mstatus);
+                    super::system::csr::isa_csr_write(cpu, super::system::csr::CSR_MSTATUS, new_mstatus);
                     
                     cpu.mode = match mpp {
                         3 => crate::common::PrivMode::Machine,
@@ -374,7 +371,7 @@ pub fn decode_exec(inst: Word, pc: Word) {
                      new_sstatus &= !(1 << 8); // SPP = 0 (User)
                      
                      // Need to write back to MSTATUS (handled by set_csr SSTATUS alias)
-                     super::system::csr::isa_csr_write(&mut cpu, super::system::csr::CSR_SSTATUS, new_sstatus);
+                     super::system::csr::isa_csr_write(cpu, super::system::csr::CSR_SSTATUS, new_sstatus);
                      
                      cpu.mode = match spp {
                          1 => crate::common::PrivMode::Supervisor,
@@ -397,32 +394,32 @@ pub fn decode_exec(inst: Word, pc: Word) {
                     let new_val = match dec.funct3 {
                         0b001 => {  // CSRRW
                             let rs1_val = R!(cpu, dec.rs1);
-                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, rs1_val);
+                            super::system::csr::isa_csr_write(cpu, csr_addr, rs1_val);
                             csr_val
                         }
                         0b010 => {  // CSRRS
                             let rs1_val = R!(cpu, dec.rs1);
-                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, csr_val | rs1_val);
+                            super::system::csr::isa_csr_write(cpu, csr_addr, csr_val | rs1_val);
                             csr_val
                         }
                         0b011 => {  // CSRRC
                             let rs1_val = R!(cpu, dec.rs1);
-                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, csr_val & !rs1_val);
+                            super::system::csr::isa_csr_write(cpu, csr_addr, csr_val & !rs1_val);
                             csr_val
                         }
                         0b101 => {  // CSRRWI
                             let zimm = dec.rs1 as u32;
-                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, zimm);
+                            super::system::csr::isa_csr_write(cpu, csr_addr, zimm);
                             csr_val
                         }
                         0b110 => {  // CSRRSI
                             let zimm = dec.rs1 as u32;
-                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, csr_val | zimm);
+                            super::system::csr::isa_csr_write(cpu, csr_addr, csr_val | zimm);
                             csr_val
                         }
                         0b111 => {  // CSRRCI
                             let zimm = dec.rs1 as u32;
-                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, csr_val & !zimm);
+                            super::system::csr::isa_csr_write(cpu, csr_addr, csr_val & !zimm);
                             csr_val
                         }
                         _ => csr_val,
@@ -437,7 +434,6 @@ pub fn decode_exec(inst: Word, pc: Word) {
         _ => {
             log::error!("Invalid instruction: 0x{:08x} at PC=0x{:08x}", inst, pc);
             set_state(RemuState::Abort);
-            drop(cpu);
             return;
         }
     }
