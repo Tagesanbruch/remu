@@ -19,10 +19,10 @@ struct VgaState {
 
 lazy_static::lazy_static! {
     static ref VGA_STATE: Mutex<VgaState> = Mutex::new(VgaState {
-        width: 400,
-        height: 300,
+        width: if VGA_SIZE_400X300 { 400 } else { 800 },
+        height: if VGA_SIZE_400X300 { 300 } else { 600 },
         sync: 0,
-        vmem: vec![0; (400 * 300 * 4) as usize], // Default size
+        vmem: vec![0; (if VGA_SIZE_400X300 { 400 * 300 } else { 800 * 600 } * 4) as usize],
     });
 }
 
@@ -35,7 +35,28 @@ pub fn init_vga() {
     // Register VGA Control
     register_mmio("vga_ctl", VGA_CTL_MMIO, 8, Box::new(vga_ctl_callback));
     
+    // Fill vmem with a pattern (Purple 0xFFAA00AA) to verify display
+    let mut state = VGA_STATE.lock().unwrap();
+    // Use u32 for faster fill
+    // We can't easily cast vec<u8> to vec<u32> safely without unsafe, just loop
+    for i in (0..state.vmem.len()).step_by(4) {
+        if i + 3 < state.vmem.len() {
+            state.vmem[i] = 0xAA;   // B
+            state.vmem[i+1] = 0x00; // G
+            state.vmem[i+2] = 0xAA; // R
+            state.vmem[i+3] = 0xFF; // A
+        }
+    }
+    drop(state); // unlock
+    
     // TODO: Init SDL2 window/texture if display enabled
+    crate::device::sdl::init_sdl();
+    
+    // Force initial update to show pattern
+    if VGA_SHOW_SCREEN {
+        let state = VGA_STATE.lock().unwrap();
+        crate::device::sdl::update_screen(&state.vmem);
+    }
 }
 
 fn vmem_callback(addr: PAddr, len: usize, is_write: bool, data: Word) -> Word {
@@ -101,6 +122,8 @@ fn vga_ctl_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Wor
     }
 }
 
-fn update_screen(_state: &VgaState) {
-    // SDL update logic here
+fn update_screen(state: &VgaState) {
+    if state.sync != 0 {
+        crate::device::sdl::update_screen(&state.vmem);
+    }
 }

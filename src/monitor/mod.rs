@@ -109,7 +109,7 @@ fn welcome() {
     pub const ANSI_FG_YELLOW: &str = "\x1b[33m";
     pub const ANSI_BG_RED: &str = "\x1b[41m";
     // Print welcome message (not logged to file, direct to stdout)
-    println!("Welcome to {}{}{}{}-NEMU!",
+    println!("Welcome to {}{}{}{}-REMU!",
         ANSI_FG_YELLOW, ANSI_BG_RED, "riscv32", ANSI_NONE);
     println!("For help, type \"help\"");
 }

@@ -97,8 +97,10 @@ impl PhysicalMemory {
             }
         } else {
             // Check if it's MMIO
-            // For now, simple logic, device module needs to be properly hooked up
-            // if DEVICE { ... }
+            if crate::generated::config::DEVICE {
+                return crate::memory::mmio::mmio_read(addr, len);
+            }
+            
             log::error!("Address 0x{:08x} is out of bound", addr);
             0
         };
@@ -129,6 +131,10 @@ impl PhysicalMemory {
             }
         } else {
             // Check if it's MMIO
+            if crate::generated::config::DEVICE {
+                crate::memory::mmio::mmio_write(addr, len, data);
+                return;
+            }
             log::error!("Address 0x{:08x} is out of bound", addr);
         }
     }

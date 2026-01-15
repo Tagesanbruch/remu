@@ -2,6 +2,7 @@ use std::fs;
 use goblin::elf::Elf;
 use crate::common::VAddr;
 use crate::generated::config::*;
+use crate::Log;
 
 #[derive(Debug, Clone)]
 pub struct Symbol {
@@ -70,7 +71,7 @@ impl FTrace {
         }
         
         self.symbols.sort_by_key(|s| s.addr);
-        println!("[FTRACE] Loaded {} function symbols from {}", self.symbols.len(), elf_file);
+        Log!("Loaded {} function symbols from {}", self.symbols.len(), elf_file);
         Ok(())
     }
 

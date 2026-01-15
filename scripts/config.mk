@@ -21,6 +21,8 @@ $(warning $(COLOR_RED)Warning: .config does not exists!$(COLOR_END))
 $(warning $(COLOR_RED)To build the project, first run 'make menuconfig'.$(COLOR_END))
 endif
 
+-include .config
+
 Q            := @
 KCONFIG_PATH := $(REMU_HOME)/tools/kconfig
 FIXDEP_PATH  := $(REMU_HOME)/tools/fixdep

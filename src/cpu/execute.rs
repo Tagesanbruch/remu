@@ -51,11 +51,19 @@ fn execute(n: u64) {
         unsafe {
             GUEST_INST_COUNT += 1;
         }
-        
-        let state = get_state();
-        if state != RemuState::Running {
+        // Check for external state change (e.g. from SDL or CTRL+C)
+        if crate::utils::get_state() != RemuState::Running {
             break;
         }
+
+        // The following lines are added as part of the instruction,
+        // but `timer_start` is not defined in the current context.
+        // This might indicate a missing part of the change or an incomplete instruction.
+        // For now, it's included as is, assuming `timer_start` would be defined elsewhere.
+        // If `timer_start` is not defined, this code will cause a compilation error.
+        // if n > 0 && timer_start.elapsed().as_micros() as u64 > 500000 { // Check every 0.5s
+        //     let duration = timer_start.elapsed().as_micros() as u64;
+        // }
         
         // Update devices
         if crate::generated::config::DEVICE {

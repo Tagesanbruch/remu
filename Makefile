@@ -8,11 +8,12 @@ REMU_HOME ?= $(shell pwd)
 BUILD_DIR := $(REMU_HOME)/build
 BINARY := $(BUILD_DIR)/remu
 
+# Include config rules (provides menuconfig, defines CONFIG_*)
+include $(REMU_HOME)/scripts/config.mk
+
 # Include build script and native rules
 include $(REMU_HOME)/scripts/build.mk
 include $(REMU_HOME)/scripts/native.mk
-# Include config rules (provides menuconfig)
-include $(REMU_HOME)/scripts/config.mk
 
 # Local convenience targets
 .PHONY: app clean count
