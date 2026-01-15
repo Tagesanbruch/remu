@@ -1,250 +1,314 @@
-# Kconfig for RustNEMU
-# Based on NEMU's Kconfig structure
+mainmenu "REMU Configuration Menu"
 
-mainmenu "RustNEMU Configuration"
+choice
+  prompt "Base ISA"
+  default ISA_riscv
+config ISA_x86
+  bool "x86"
+config ISA_mips32
+  bool "mips32"
+config ISA_riscv
+  bool "riscv"
+config ISA_loongarch32r
+  bool "loongarch32r"
+endchoice
 
 config ISA
-    string
-    default "riscv32"
+  string
+  default "x86" if ISA_x86
+  default "mips32" if ISA_mips32
+  default "riscv32" if ISA_riscv && !RV64
+  default "riscv64" if ISA_riscv &&  RV64
+  default "loongarch32r" if ISA_loongarch32r
+  default "none"
 
-config ISA_riscv
-    bool
-    default y
+config ISA64
+  depends on ISA_riscv && RV64
+  bool
+  default y
 
-config RV64
-    bool "RV64 (64-bit)"
-    default n
 
-config RVE
-    bool "RVE (Embedded, 16 registers)"
-    default n
+if ISA_riscv
+source "src/isa/riscv32/Kconfig"
+endif
+
+choice
+  prompt "REMU execution engine"
+  default ENGINE_INTERPRETER
+
+config ENGINE_INTERPRETER
+  bool "Interpreter"
+  help
+    Interpreter guest instructions one by one.
+endchoice
+
+config ENGINE
+  string
+  default "interpreter" if ENGINE_INTERPRETER
+  default "none"
+
+choice
+  prompt "Running mode"
+  default MODE_SYSTEM
+
+config MODE_SYSTEM
+  bool "System mode"
+  help
+    Support full-system functionality, including privileged instructions, MMU and devices.
+endchoice
+
+choice
+  prompt "Build target"
+  default TARGET_NATIVE_ELF
+config TARGET_NATIVE_ELF
+  bool "Executable on Linux Native"
+config TARGET_SHARE
+  bool "Shared object (used as REF for differential testing)"
+config TARGET_AM
+  bool "Application on Abstract-Machine (DON'T CHOOSE)"
+endchoice
 
 menu "Build Options"
+choice
+  prompt "Compiler"
+  default CC_GCC
+config CC_GCC
+  bool "gcc"
+config CC_GPP
+  bool "g++"
+config CC_CLANG
+  depends on !TARGET_AM
+  bool "clang"
+endchoice
+
+config CC
+  string
+  default "gcc" if CC_GCC
+  default "g++" if CC_GPP
+  default "clang" if CC_CLANG
+  default "none"
+
+choice
+  prompt "Optimization Level"
+  default CC_O2
+config CC_O0
+  bool "O0"
+config CC_O1
+  bool "O1"
+config CC_O2
+  bool "O2"
+config CC_O3
+  bool "O3"
+endchoice
 
 config CC_OPT
-    string "Compiler optimization level"
-    default "-O3"
+  string
+  default "-O0" if CC_O0
+  default "-O1" if CC_O1
+  default "-O2" if CC_O2
+  default "-O3" if CC_O3
+  default "none"
 
 config CC_LTO
-    bool "Link-time optimization"
-    default n
+  depends on !TARGET_AM
+  bool "Enable link-time optimization"
+  default n
 
 config CC_DEBUG
-    bool "Debug info"
-    default n
+  bool "Enable debug information"
+  default n
 
+config CC_ASAN
+  depends on MODE_SYSTEM
+  bool "Enable address sanitizer"
+  default n
 endmenu
 
 menu "Testing and Debugging"
 
-config TRACE
-    bool "Enable trace"
-    default y
 
-if TRACE
+config TRACE
+  bool "Enable tracer"
+  default y
 
 config TRACE_START
-    int "Trace start point"
-    default 0
+  depends on TRACE
+  int "When tracing is enabled (unit: number of instructions)"
+  default 0
 
 config TRACE_END
-    int "Trace end point"
-    default 10000
+  depends on TRACE
+  int "When tracing is disabled (unit: number of instructions)"
+  default 10000
 
 config ITRACE
-    bool "Instruction trace"
-    default y
+  depends on TRACE && TARGET_NATIVE_ELF && ENGINE_INTERPRETER
+  bool "Enable instruction tracer"
+  default y
 
-if ITRACE
 config ITRACE_COND
-    string "Instruction trace condition"
-    default "true"
+  depends on ITRACE
+  string "Only trace instructions when the condition is true"
+  default "true"
 
 config ITRACE_RINGBUF
-    int "Instruction trace ring buffer size"
-    default 32
-endif
+  depends on ITRACE
+  int "Instruction tracing buf size"
+  default 32
 
 config MTRACE
-    bool "Memory trace"
-    default y
+  depends on TRACE && TARGET_NATIVE_ELF && ENGINE_INTERPRETER
+  bool "Enable memory tracer"
+  default y
 
-if MTRACE
 config MTRACE_COND
-    string "Memory trace condition"
-    default "true"
+  depends on MTRACE
+  string "Only trace memory when the condition is true"
+  default "true"
 
 config MTRACE_RINGBUF
-    int "Memory trace ring buffer size"
-    default 32
-endif
+  depends on MTRACE
+  int "Memory tracing buf size"
+  default 32
 
 config FTRACE
-    bool "Function trace"
-    default y
+  depends on TRACE && TARGET_NATIVE_ELF && ENGINE_INTERPRETER
+  bool "Enable function tracer"
+  default y
 
-if FTRACE
 config FTRACE_COND
-    string "Function trace condition"
-    default "true"
+  depends on FTRACE
+  string "Only trace function when the condition is true"
+  default "true"
 
 config FTRACE_BUF
-    int "Function trace buffer size"
-    default 1024
-endif
+  depends on MTRACE
+  int "Function tracing buf size"
+  default 1024
 
 config DTRACE
-    bool "Device trace"
-    default y
+  depends on TRACE && TARGET_NATIVE_ELF && ENGINE_INTERPRETER
+  bool "Enable device tracer"
+  default y
 
-if DTRACE
 config DTRACE_COND
-    string "Device trace condition"
-    default "true"
+  depends on ITRACE
+  string "Only trace device when the condition is true"
+  default "true"
 
 config DTRACE_RINGBUF
-    int "Device trace ring buffer size"
-    default 32
-endif
+  depends on ITRACE
+  int "Device tracing buf size"
+  default 32
 
-endif # TRACE
+config TRACE_INTR
+  depends on TRACE
+  bool "Enable interrupt/exception tracer"
+  default n
+
+config TRACE_INTR_RINGBUF
+  depends on TRACE_INTR
+  int "Interrupt tracing buf size"
+  default 32
+
+config TRACE_MMU
+  depends on TRACE
+  bool "Enable MMU tracer"
+  default n
+
+config TRACE_MMU_RINGBUF
+  depends on TRACE_MMU
+  int "MMU tracing buf size"
+  default 32
+
+config TRACE_PLIC
+  depends on TRACE
+  bool "Enable PLIC tracer"
+  default n
+
+config TRACE_PLIC_RINGBUF
+  depends on TRACE_PLIC
+  int "PLIC tracing buf size"
+  default 32
+
+config TRACE_ECALL
+  depends on TRACE
+  bool "Enable Ecall tracer"
+  default n
+
+config TRACE_ECALL_RINGBUF
+  depends on TRACE_ECALL
+  int "Ecall tracing buf size"
+  default 32
 
 config DIFFTEST
-    bool "Differential testing"
-    default n
+  depends on TARGET_NATIVE_ELF
+  bool "Enable differential testing"
+  default n
+  help
+    Enable differential testing with a reference design.
+    Note that this will significantly reduce the performance of REMU.
 
-if DIFFTEST
-config DIFFTEST_REF_PATH
-    string "Reference implementation path"
-    default "none"
-
-config DIFFTEST_REF_NAME
-    string "Reference implementation name"
-    default "none"
+choice
+  prompt "Reference design"
+  default DIFFTEST_REF_SPIKE if ISA_riscv
+  default DIFFTEST_REF_KVM if ISA_x86
+  default DIFFTEST_REF_QEMU
+  depends on DIFFTEST
+config DIFFTEST_REF_QEMU
+  bool "QEMU, communicate with socket"
+if ISA_riscv
+config DIFFTEST_REF_SPIKE
+  bool "Spike"
 endif
+if ISA_x86
+config DIFFTEST_REF_KVM
+  bool "KVM"
+endif
+endchoice
 
 config WATCHPOINT
-    bool "Watchpoint support"
-    default y
+  bool "Enable Watchpoint"
+  default y
 
+config EVAL_DEBUG
+  bool "Enable Expression Debug"
+  default n
+  
+config DIFFTEST_REF_PATH
+  string
+  default "tools/qemu-diff" if DIFFTEST_REF_QEMU
+  default "tools/kvm-diff" if DIFFTEST_REF_KVM
+  default "tools/spike-diff" if DIFFTEST_REF_SPIKE
+  default "none"
+
+config DIFFTEST_REF_NAME
+  string
+  default "qemu" if DIFFTEST_REF_QEMU
+  default "kvm" if DIFFTEST_REF_KVM
+  default "spike" if DIFFTEST_REF_SPIKE
+  default "none"
 endmenu
 
-menu "Memory Configuration"
-
-config MBASE
-    hex "Memory base address"
-    default 0x80000000
-
-config MSIZE
-    hex "Memory size"
-    default 0x8000000
-
-config PC_RESET_OFFSET
-    hex "PC reset offset"
-    default 0
-
-config MEM_RANDOM
-    bool "Random memory initialization"
-    default y
-
-endmenu
-
-menu "Devices"
-
-config DEVICE
-    bool "Enable devices"
-    default y
-
-if DEVICE
-
-config HAS_SERIAL
-    bool "Serial device"
-    default y
-
-if HAS_SERIAL
-config SERIAL_MMIO
-    hex "Serial MMIO address"
-    default 0xa00003f8
+if MODE_SYSTEM
+source "src/memory/Kconfig"
+source "src/device/Kconfig"
 endif
 
-config HAS_TIMER
-    bool "Timer device"
-    default y
 
-if HAS_TIMER
-config RTC_MMIO
-    hex "RTC MMIO address"
-    default 0xa0000048
-endif
+menu "Miscellaneous"
+choice
+  depends on !TARGET_AM
+  prompt "Host timer"
+  default TIMER_GETTIMEOFDAY
+config TIMER_GETTIMEOFDAY
+  bool "gettimeofday"
+config TIMER_CLOCK_GETTIME
+  bool "clock_gettime"
+endchoice
 
-config HAS_KEYBOARD
-    bool "Keyboard device"
-    default y
-
-if HAS_KEYBOARD
-config I8042_DATA_MMIO
-    hex "Keyboard data MMIO address"
-    default 0xa0000060
-endif
-
-config HAS_VGA
-    bool "VGA device"
-    default y
-
-if HAS_VGA
-config FB_ADDR
-    hex "Framebuffer address"
-    default 0xa1000000
-
-config VGA_CTL_MMIO
-    hex "VGA control MMIO address"
-    default 0xa0000100
-
-config VGA_SHOW_SCREEN
-    bool "Show VGA screen"
-    default y
-endif
-
-config HAS_AUDIO
-    bool "Audio device"
-    default y
-
-if HAS_AUDIO
-config SB_ADDR
-    hex "Audio buffer address"
-    default 0xa1200000
-
-config SB_SIZE
-    hex "Audio buffer size"
-    default 0x10000
-
-config AUDIO_CTL_MMIO
-    hex "Audio control MMIO address"
-    default 0xa0000200
-endif
-
-config HAS_DISK
-    bool "Disk device"
-    default y
-
-if HAS_DISK
-config DISK_CTL_MMIO
-    hex "Disk control MMIO address"
-    default 0xa0000300
-
-config DISK_IMG_PATH
-    string "Disk image path"
-    default ""
-endif
-
-config HAS_CLINT
-    bool "CLINT (Core Local Interruptor)"
-    default y
-
-config HAS_PLIC
-    bool "PLIC (Platform-Level Interrupt Controller)"
-    default y
-
-endif # DEVICE
+config RT_CHECK
+  bool "Enable runtime checking"
+  default y
 
 endmenu

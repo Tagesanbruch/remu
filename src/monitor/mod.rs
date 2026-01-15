@@ -20,6 +20,11 @@ pub fn init_monitor(cfg: &Config) {
     // Load image
     load_img(cfg);
     
+    // Initialize FTRACE
+    if let Some(elf_file) = &cfg.elf_file {
+        crate::utils::ftrace::init_ftrace(elf_file);
+    }
+    
     // Initialize devices
     #[cfg(feature = "device")]
     crate::device::init_device();
@@ -61,29 +66,26 @@ fn load_img(cfg: &Config) {
             }
         }
     } else {
-        // Load built-in image (like NEMU's init.c)
         Log!("No image is given. Use the default built-in image.");
-        load_builtin_image();
+        copy_builtin_image_to_memory();
     }
 }
 
-fn load_builtin_image() {
-    // Built-in test program (from NEMU's riscv32/init.c)  
-    // Note: Only 5 words, ebreak is at 0x8000000c
-    let img: [u32; 5] = [
-        0x00000297,  // auipc t0,0
-        0x00028823,  // sb  zero,16(t0)
-        0x0102c503,  // lbu a0,16(t0)
-        0x00100073,  // ebreak (NEMU trap)
-        0xdeadbeef,  // some data
-    ];
-    
+fn copy_builtin_image_to_memory() {
     let rt_cfg = RuntimeConfig::default();
     let reset_vec = crate::config::reset_vector(&rt_cfg);
     
-    // Convert to bytes with correct endianness
+    // Simple infinite loop + ebreak
+    let image: [u32; 4] = [
+        0x00000297,  // auipc t0, 0
+        0x01028823,  // sb a0, 16(t0)
+        0x0102c503,  // lbu a0, 16(t0)
+        0x00100073,  // ebreak
+    ];
+    
+    // Convert to bytes
     let mut bytes = Vec::new();
-    for inst in &img {
+    for inst in image.iter() {
         bytes.extend_from_slice(&inst.to_le_bytes());
     }
     
@@ -97,31 +99,19 @@ fn load_builtin_image() {
 }
 
 fn welcome() {
-    use crate::utils::log::{ANSI_FG_GREEN, ANSI_FG_YELLOW, ANSI_BG_RED, ANSI_NONE};
-    
-    #[cfg(feature = "trace")]
-    let trace_status = format!("{}ON{}", ANSI_FG_GREEN, ANSI_NONE);
-    
-    #[cfg(not(feature = "trace"))]
-    let trace_status = format!("{}OFF{}", ANSI_FG_RED, ANSI_NONE);
-    
-    Log!("Trace: {}", trace_status);
-    
-    #[cfg(feature = "trace")]
-    Log!("If trace is enabled, a log file will be generated to record the trace. This may lead to a large log file. If it is not necessary, you can disable it in menuconfig");
-    
-    // Print welcome message (not logged to file, direct to stdout)
-    println!("Welcome to {}{}{}{}-REMU!",
-        ANSI_FG_YELLOW, ANSI_BG_RED, "riscv32", ANSI_NONE);
+    println!("Trace: {}", if crate::generated::config::TRACE { crate::common::colored("ON", crate::common::ANSI_FG_GREEN) } else { crate::common::colored("OFF", crate::common::ANSI_FG_RED) });
+    if crate::generated::config::TRACE {
+        println!("If trace is enabled, a log file will be generated to record the trace. This may lead to a large log file. If it is not necessary, you can disable it in menuconfig");
+    }
+
+    println!("{}", crate::common::colored("Welcome to riscv32-REMU!", crate::common::ANSI_FG_CYAN));
     println!("For help, type \"help\"");
+}
+
+pub fn set_exit_status_bad() {
+    unsafe { EXIT_BAD = true; }
 }
 
 pub fn is_exit_status_bad() -> bool {
     unsafe { EXIT_BAD }
-}
-
-pub fn set_exit_bad() {
-    unsafe {
-        EXIT_BAD = true;
-    }
 }

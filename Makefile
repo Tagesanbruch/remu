@@ -11,9 +11,11 @@ BINARY := $(BUILD_DIR)/remu
 # Include build script and native rules
 include $(REMU_HOME)/scripts/build.mk
 include $(REMU_HOME)/scripts/native.mk
+# Include config rules (provides menuconfig)
+include $(REMU_HOME)/scripts/config.mk
 
 # Local convenience targets
-.PHONY: app clean menuconfig count
+.PHONY: app clean count
 
 app: $(BINARY)
 
@@ -21,10 +23,6 @@ clean:
 	@echo "Cleaning build artifacts..."
 	@cargo clean
 	@rm -rf $(BUILD_DIR)
-
-menuconfig:
-	@echo "menuconfig not fully implemented for REMU"
-	@echo "Edit .config file directly or use Cargo features"
 
 count:
 	@echo "Counting Rust source lines..."

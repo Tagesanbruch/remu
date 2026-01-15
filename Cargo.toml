@@ -28,6 +28,7 @@ memmap2 = { version = "0.9", optional = true }
 
 # Logging (optional, for fallback)
 log = "0.4"
+goblin = "0.10.4"
 
 [build-dependencies]
 serde = { version = "1.0", features = ["derive"] }

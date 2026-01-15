@@ -22,9 +22,9 @@ $(warning $(COLOR_RED)To build the project, first run 'make menuconfig'.$(COLOR_
 endif
 
 Q            := @
-KCONFIG_PATH := $(RNEMU_HOME)/tools/kconfig
-FIXDEP_PATH  := $(RNEMU_HOME)/tools/fixdep
-Kconfig      := $(RNEMU_HOME)/Kconfig
+KCONFIG_PATH := $(REMU_HOME)/tools/kconfig
+FIXDEP_PATH  := $(REMU_HOME)/tools/fixdep
+Kconfig      := $(REMU_HOME)/Kconfig
 rm-distclean += include/generated include/config .config .config.old
 silent := -s
 

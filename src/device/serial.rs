@@ -1,45 +1,28 @@
-// Serial device (UART)
+// Serial Device (UART)
 
-use crate::common::Word;
-use std::io::{self, Write};
-use std::sync::Mutex;
+use crate::generated::config::*;
+use crate::memory::mmio::register_mmio;
+use crate::common::{PAddr, Word};
 
-pub const SERIAL_MMIO: u32 = 0xa00003f8;
-
-lazy_static::lazy_static! {
-    static ref SERIAL: Mutex<SerialDevice> = Mutex::new(SerialDevice::new());
+pub fn init_serial() {
+    if !HAS_SERIAL { return; }
+    
+    register_mmio("serial", SERIAL_MMIO, 8, Box::new(serial_callback));
 }
 
-pub struct SerialDevice {
-    // Simple UART model
+pub fn serial_update() {
+    // Flush stdout if needed
+    // std::io::stdout().flush().unwrap();
 }
 
-impl SerialDevice {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn read(&self, _offset: u32) -> Word {
-        // Read not implemented for now
+fn serial_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
+    if is_write {
+        let offset = addr - SERIAL_MMIO;
+        if offset == 0 {
+            print!("{}", (data as u8) as char);
+        }
+        0
+    } else {
         0
     }
-
-    pub fn write(&mut self, _offset: u32, data: Word) {
-        // Print character to stdout
-        let ch = (data & 0xff) as u8;
-        print!("{}", ch as char);
-        io::stdout().flush().ok();
-    }
-}
-
-pub fn init() {
-    log::info!("Serial device initialized at 0x{:08x}", SERIAL_MMIO);
-}
-
-pub fn serial_read(offset: u32) -> Word {
-    SERIAL.lock().unwrap().read(offset)
-}
-
-pub fn serial_write(offset: u32, data: Word) {
-   SERIAL.lock().unwrap().write(offset, data)
 }

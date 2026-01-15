@@ -14,13 +14,12 @@
 #**************************************************************************************/
 
 -include $(REMU_HOME)/../Makefile
-include $(REMU_HOME)/scripts/build.mk
+
+# NOTE: build.mk is included by Makefile directly, so we don't include it here
+# to avoid duplicate targets warning.
+# include $(REMU_HOME)/scripts/build.mk
 
 include $(REMU_HOME)/tools/difftest.mk
-
-# compile_git:
-# 	$(call git_commit, "compile REMU")
-# $(BINARY):: compile_git
 
 # Some convenient rules
 
@@ -36,22 +35,16 @@ ifeq ($(strip $(ELF)),)
 else
     override ARGS += --elf=$(ELF)
 endif
-
-ifeq ($(strip $(BATCH)),)
-    override ARGS += 
-else
-    override ARGS += --batch
-endif
-
+# override ARGS += --batch
 REMU_EXEC := $(BINARY) $(ARGS) $(IMG)
 
-run-env: $(BINARY) $(DIFF_REF_SO)
+run-env: $(BINARY) $(DIFF_REF_SO) $(REMU_HOME)/src/generated/config.rs
 
 
 run: run-env
 	$(call git_commit, "run REMU")
-	echo $(REMU_EXEC)
-	$(REMU_EXEC)
+	@echo "+ REMU $(ARGS) $(IMG)"
+	@$(REMU_EXEC)
 
 gdb: run-env
 	$(call git_commit, "gdb REMU")
@@ -59,7 +52,7 @@ gdb: run-env
 
 batch: run-env
 	$(call git_commit, "batch REMU")
-	$(REMU_EXEC) -b
+	@$(REMU_EXEC) -b
 
 clean-tools = $(dir $(shell find ./tools -maxdepth 2 -mindepth 2 -name "Makefile"))
 $(clean-tools):

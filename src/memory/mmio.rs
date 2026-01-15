@@ -1,57 +1,61 @@
-// Memory-mapped I/O (MMIO) handling
+// Memory Mapped I/O
 
-use crate::common::{Word, PAddr};
-use crate::config::RuntimeConfig;
+use crate::common::{PAddr, Word};
+use std::sync::Mutex;
+
+// MMIO map entry
+struct MmioMap {
+    name: String,
+    start: PAddr,
+    end: PAddr,
+    callback: Box<dyn Fn(PAddr, usize, bool, Word) -> Word + Send + Sync>, // addr, len, is_write, data -> return data
+}
+
+lazy_static::lazy_static! {
+    static ref MMIO_MAPS: Mutex<Vec<MmioMap>> = Mutex::new(Vec::new());
+}
+
+pub fn init_mmio() {
+    let mut maps = MMIO_MAPS.lock().unwrap();
+    maps.clear();
+}
+
+pub fn register_mmio(name: &str, start: PAddr, len: usize, 
+                     callback: Box<dyn Fn(PAddr, usize, bool, Word) -> Word + Send + Sync>) {
+    let mut maps = MMIO_MAPS.lock().unwrap();
+    maps.push(MmioMap {
+        name: name.to_string(),
+        start,
+        end: start + len as u32,
+        callback,
+    });
+    crate::Log!("Add mmio map '{}' at [0x{:08x}, 0x{:08x}]", name, start, start + len as u32 - 1);
+}
 
 pub fn mmio_read(addr: PAddr, len: usize) -> Word {
-    let cfg = RuntimeConfig::default();
-    
-    // Serial device
-    if cfg.has_serial && addr >= cfg.serial_mmio && addr < cfg.serial_mmio + 0x100 {
-        return crate::device::serial::serial_read(addr - cfg.serial_mmio);
+    let maps = MMIO_MAPS.lock().unwrap();
+    for map in maps.iter() {
+        if addr >= map.start && addr < map.end {
+            let ret = (map.callback)(addr, len, false, 0);
+            crate::utils::dtrace::trace_dtrace(addr, len, ret, false, &map.name);
+            return ret;
+        }
     }
     
-    // Timer device
-    if cfg.has_timer && addr == cfg.rtc_mmio {
-        return crate::device::timer::timer_read();
-    }
-    
-    // CLINT
-    if cfg.has_clint && addr >= 0x02000000 && addr < 0x0200c000 {
-        return crate::device::clint::clint_read(addr, len);
-    }
-    
-    // PLIC
-    if cfg.has_plic && addr >= 0x0c000000 && addr < 0x10000000 {
-        return crate::device::plic::plic_read(addr, len);
-    }
-    
-    log::warn!("MMIO read from unmapped address 0x{:08x} (len={})", addr, len);
+    // Using log::error to avoid panic, consistent with previous behavior but safe
+    log::error!("MMIO read: unmapped address 0x{:08x}", addr);
     0
 }
 
 pub fn mmio_write(addr: PAddr, len: usize, data: Word) {
-    let cfg = RuntimeConfig::default();
-    
-    // Serial device
-    if cfg.has_serial && addr >= cfg.serial_mmio && addr < cfg.serial_mmio + 0x100 {
-        crate::device::serial::serial_write(addr - cfg.serial_mmio, data);
-        return;
+    let maps = MMIO_MAPS.lock().unwrap();
+    for map in maps.iter() {
+        if addr >= map.start && addr < map.end {
+            (map.callback)(addr, len, true, data);
+            crate::utils::dtrace::trace_dtrace(addr, len, data, true, &map.name);
+            return;
+        }
     }
     
-    // Timer device (read-only)
-    
-    // CLINT
-    if cfg.has_clint && addr >= 0x02000000 && addr < 0x0200c000 {
-        crate::device::clint::clint_write(addr, len, data);
-        return;
-    }
-    
-    // PLIC
-    if cfg.has_plic && addr >= 0x0c000000 && addr < 0x10000000 {
-        crate::device::plic::plic_write(addr, len, data);
-        return;
-    }
-    
-    log::warn!("MMIO write to unmapped address 0x{:08x} = 0x{:08x} (len={})", addr, data, len);
+    log::error!("MMIO write: unmapped address 0x{:08x}", addr);
 }

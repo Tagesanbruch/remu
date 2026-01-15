@@ -1,12 +1,10 @@
-// Common types and macros used throughout RustNEMU
-
-// use std::fmt;  // Unused
+// Common types and macros
 
 // Word type for RISC-V32
-pub type Word = u32;
-pub type SWord = i32;
 pub type PAddr = u32;
 pub type VAddr = u32;
+pub type Word = u32;
+pub type SWord = i32;
 
 // CPU state enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,70 +36,33 @@ pub const ANSI_FG_WHITE: &str = "\x1b[37m";
 pub const ANSI_BG_RED: &str = "\x1b[41m";
 pub const ANSI_RESET: &str = "\x1b[0m";
 
-// Macros for compile-time configuration
-#[macro_export]
-macro_rules! ifdef {
-    ($feature:expr, $code:expr) => {
-        #[cfg(feature = $feature)]
-        {
-            $code
-        }
-    };
+pub fn colored(text: &str, color: &str) -> String {
+    format!("{}{}{}", color, text, ANSI_RESET)
 }
 
-#[macro_export]
-macro_rules! ifndef {
-    ($feature:expr, $code:expr) => {
-        #[cfg(not(feature = $feature))]
-        {
-            $code
-        }
-    };
-}
-
-// Bit manipulation macros
-#[macro_export]
-macro_rules! bits {
-    ($val:expr, $hi:expr, $lo:expr) => {
-        (($val >> $lo) & ((1 << ($hi - $lo + 1)) - 1))
-    };
-}
-
-#[macro_export]
-macro_rules! sext {
-    ($val:expr, $bits:expr) => {{
-        let shift = 32 - $bits;
-        (($val << shift) as i32 >> shift) as u32
-    }};
-}
-
-// Panic with formatted message
+// Custom Panic Macro that dumps state
 #[macro_export]
 macro_rules! panic_remu {
     ($($arg:tt)*) => {
-        panic!("{}", format!($($arg)*))
-    };
+        eprintln!("\x1b[31mPANIC: {}\x1b[0m", format_args!($($arg)*));
+        crate::utils::itrace::show_itrace();
+        crate::utils::mtrace::show_mtrace();
+        crate::monitor::set_exit_status_bad();
+        std::process::exit(1);
+    }
 }
 
-// Assert with better error messages
+// Custom Assert Macro
 #[macro_export]
 macro_rules! assert_remu {
-    ($cond:expr, $($arg:tt)*) => {
+    ($cond:expr) => {
         if !$cond {
-            panic_remu!($($arg)*);
+            panic_remu!("Assertion failed: {}", stringify!($cond));
         }
     };
-}
-
-// Formatting helpers
-pub fn fmt_word(w: Word) -> String {
-    format!("0x{:08x}", w)
-}
-
-pub fn fmt_paddr(p: PAddr) -> String {
-    format!("0x{:08x}", p)
-}
-
-pub fn colored(text: &str, color: &str) -> String {
-    format!("{}{}{}", color, text, ANSI_RESET)
+    ($cond:expr, $($arg:tt)+) => {
+        if !$cond {
+            panic_remu!("Assertion failed: {}", format_args!($($arg)+));
+        }
+    };
 }

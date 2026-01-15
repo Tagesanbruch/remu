@@ -132,10 +132,13 @@ fn statistic() {
     #[cfg(feature = "trace")]
     {
         crate::utils::itrace::show_itrace();
+        crate::utils::mtrace::show_mtrace();
+        crate::utils::ftrace::show_ftrace();
+        crate::utils::dtrace::show_dtrace();
     }
     
     // Set bad exit status if needed
     if halt_ret != 0 && state != RemuState::Abort {
-        crate::monitor::set_exit_bad();
+        crate::monitor::set_exit_status_bad();
     }
 }

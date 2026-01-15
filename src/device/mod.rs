@@ -1,35 +1,35 @@
-// Device module
+// Device management
 
-pub mod serial;
 pub mod timer;
+pub mod serial;
+pub mod keyboard;
+pub mod vga;
+pub mod audio;
+pub mod disk;
 pub mod clint;
 pub mod plic;
 
-use crate::config::RuntimeConfig;
-
 pub fn init_device() {
-    log::info!("Initializing devices...");
+    crate::Log!("Initializing devices...");
     
-    let cfg = RuntimeConfig::default();
+    // Timer (Core time source)
+    timer::init_timer();
     
-    if cfg.has_serial {
-        serial::init();
-    }
+    // Interrupt Controllers
+    clint::init_clint();
+    plic::init_plic();
     
-    if cfg.has_timer {
-        timer::init();
-    }
-    
-    if cfg.has_clint {
-        clint::init();
-    }
-    
-    if cfg.has_plic {
-        plic::init();
-    }
+    // Peripherals
+    serial::init_serial();
+    keyboard::init_keyboard();
+    vga::init_vga();
+    audio::init_audio();
+    disk::init_disk();
 }
 
 pub fn device_update() {
-    // Update devices as needed
-    timer::update();
+    // Poll SDL events, etc.
+    serial::serial_update();
+    
+    // TODO: Poll SDL events and feed keyboard/VGA
 }

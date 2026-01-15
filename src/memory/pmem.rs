@@ -1,7 +1,7 @@
 // Physical memory implementation
 
 use crate::common::{Word, PAddr};
-use crate::config::RuntimeConfig;
+use crate::generated::config::*;
 use std::sync::{Arc, Mutex};
 
 // Memory regions
@@ -24,15 +24,14 @@ impl PhysicalMemory {
         let mut pmem = vec![0u8; msize];
         
         // Random initialization if configured
-        let cfg = RuntimeConfig::default();
-        if cfg.mem_random {
+        if MEM_RANDOM {
             use std::time::{SystemTime, UNIX_EPOCH};
             let seed = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs() as u32;
             
-            // Simple random fill (just for testing, not cryptographically secure)
+            // Simple random fill
             for i in 0..pmem.len() {
                 pmem[i] = ((seed.wrapping_mul(1103515245).wrapping_add(i as u32)) >> 8) as u8;
             }
@@ -78,7 +77,7 @@ impl PhysicalMemory {
     }
 
     pub fn read(&self, addr: PAddr, len: usize) -> Word {
-        if let Some(ptr) = self.guest_to_host(addr) {
+        let ret = if let Some(ptr) = self.guest_to_host(addr) {
             unsafe {
                 match len {
                     1 => *ptr as Word,
@@ -98,17 +97,19 @@ impl PhysicalMemory {
             }
         } else {
             // Check if it's MMIO
-            #[cfg(feature = "device")]
-            {
-                return crate::memory::mmio::mmio_read(addr, len);
-            }
-            
+            // For now, simple logic, device module needs to be properly hooked up
+            // if DEVICE { ... }
             log::error!("Address 0x{:08x} is out of bound", addr);
             0
-        }
+        };
+        
+        crate::utils::mtrace::trace_read(addr, len, ret);
+        ret
     }
 
     pub fn write(&mut self, addr: PAddr, len: usize, data: Word) {
+        crate::utils::mtrace::trace_write(addr, len, data);
+        
         if let Some(ptr) = self.guest_to_host(addr) {
             unsafe {
                 match len {
@@ -128,12 +129,6 @@ impl PhysicalMemory {
             }
         } else {
             // Check if it's MMIO
-            #[cfg(feature = "device")]
-            {
-                crate::memory::mmio::mmio_write(addr, len, data);
-                return;
-            }
-            
             log::error!("Address 0x{:08x} is out of bound", addr);
         }
     }
@@ -141,8 +136,7 @@ impl PhysicalMemory {
 
 lazy_static::lazy_static! {
     pub static ref PMEM: Arc<Mutex<PhysicalMemory>> = {
-        let cfg = RuntimeConfig::default();
-        Arc::new(Mutex::new(PhysicalMemory::new(cfg.mbase, cfg.msize as usize)))
+        Arc::new(Mutex::new(PhysicalMemory::new(MBASE, MSIZE as usize)))
     };
 }
 

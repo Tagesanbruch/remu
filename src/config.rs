@@ -1,7 +1,6 @@
 // Configuration parsing and management
 
 use clap::Parser;
-// use std::path::PathBuf;  // Unused
 
 #[derive(Parser, Debug)]
 #[command(name = "remu")]
@@ -33,8 +32,11 @@ pub struct Config {
     pub image: Option<std::path::PathBuf>,
 }
 
-// Runtime configuration constants
-// These would normally be generated from Kconfig
+// Runtime configuration from generated/config.rs
+// We use the crate root to access the generated module
+use crate::generated::config::*;
+
+#[derive(Debug)]
 pub struct RuntimeConfig {
     pub mbase: u32,
     pub msize: u32,
@@ -51,21 +53,17 @@ pub struct RuntimeConfig {
     pub rtc_mmio: u32,
     
     pub has_keyboard: bool,
-    pub i8042_data_mmio: u32,
+    pub keyboard_mmio: u32,
     
     pub has_vga: bool,
     pub fb_addr: u32,
-    pub vga_ctl_mmio: u32,
-    pub vga_show_screen: bool,
+    pub vgactl_mmio: u32,
     
     pub has_audio: bool,
-    pub sb_addr: u32,
-    pub sb_size: u32,
-    pub audio_ctl_mmio: u32,
+    pub audio_addr: u32,
     
     pub has_disk: bool,
-    pub disk_ctl_mmio: u32,
-    pub disk_img_path: String,
+    pub disk_mmio: u32,
     
     pub has_clint: bool,
     pub has_plic: bool,
@@ -74,42 +72,35 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            // Memory configuration (matching NEMU .config)
-            mbase: 0x80000000,
-            msize: 0x8000000,  // 128MB
-            pc_reset_offset: 0,
-            mem_random: true,
+            mbase: MBASE,
+            msize: MSIZE,
+            pc_reset_offset: PC_RESET_OFFSET,
+            mem_random: MEM_RANDOM,
             
-            // Trace configuration
-            trace_start: 0,
-            trace_end: 10000,
+            trace_start: TRACE_START,
+            trace_end: TRACE_END,
             
-            // Device configuration
-            has_serial: cfg!(feature = "serial"),
-            serial_mmio: 0xa00003f8,
+            has_serial: HAS_SERIAL,
+            serial_mmio: SERIAL_MMIO,
             
-            has_timer: cfg!(feature = "timer"),
-            rtc_mmio: 0xa0000048,
+            has_timer: HAS_TIMER,
+            rtc_mmio: RTC_MMIO,
             
-            has_keyboard: cfg!(feature = "keyboard"),
-            i8042_data_mmio: 0xa0000060,
+            has_keyboard: HAS_KEYBOARD,
+            keyboard_mmio: I8042_DATA_MMIO,
             
-            has_vga: cfg!(feature = "vga"),
-            fb_addr: 0xa1000000,
-            vga_ctl_mmio: 0xa0000100,
-            vga_show_screen: true,
+            has_vga: HAS_VGA,
+            fb_addr: FB_ADDR,
+            vgactl_mmio: VGA_CTL_MMIO,
             
-            has_audio: cfg!(feature = "audio"),
-            sb_addr: 0xa1200000,
-            sb_size: 0x10000,
-            audio_ctl_mmio: 0xa0000200,
+            has_audio: HAS_AUDIO,
+            audio_addr: SB_ADDR,
             
-            has_disk: cfg!(feature = "disk"),
-            disk_ctl_mmio: 0xa0000300,
-            disk_img_path: String::new(),
+            has_disk: HAS_DISK,
+            disk_mmio: DISK_CTL_MMIO,
             
-            has_clint: cfg!(feature = "clint"),
-            has_plic: cfg!(feature = "plic"),
+            has_clint: HAS_CLINT,
+            has_plic: HAS_PLIC,
         }
     }
 }

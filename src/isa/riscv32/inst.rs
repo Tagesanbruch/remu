@@ -42,6 +42,9 @@ pub fn decode_exec(inst: Word, pc: Word) {
             dec.decode_j();
             W!(cpu, dec.rd, pc.wrapping_add(4));
             dnpc = pc.wrapping_add(dec.imm);
+            
+            // FTRACE: call
+            crate::utils::ftrace::trace_call(pc, dnpc);
         }
         // JALR
         0b1100111 => {
@@ -49,6 +52,15 @@ pub fn decode_exec(inst: Word, pc: Word) {
             let src1 = R!(cpu, dec.rs1);
             W!(cpu, dec.rd, pc.wrapping_add(4));
             dnpc = (src1.wrapping_add(dec.imm)) & !1;
+            
+            // FTRACE
+            if dec.rd == 0 && dec.rs1 == 1 && dec.imm == 0 {
+                 // ret
+                 crate::utils::ftrace::trace_ret(pc);
+            } else {
+                 // call
+                 crate::utils::ftrace::trace_call(pc, dnpc);
+            }
         }
         // Branch instructions
         0b1100011 => {
