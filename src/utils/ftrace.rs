@@ -49,7 +49,7 @@ impl FTrace {
         }
     }
 
-    pub fn load_elf(&mut self, elf_file: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn load_elf(&mut self, elf_file: &str, offset: u32) -> Result<(), Box<dyn std::error::Error>> {
         let buffer = fs::read(elf_file)?;
         let elf = Elf::parse(&buffer)?;
         
@@ -64,7 +64,7 @@ impl FTrace {
             if sym.st_type() == 2 {
                 self.symbols.push(Symbol {
                     name: name.to_string(),
-                    addr: sym.st_value as u32,
+                    addr: (sym.st_value as u32).wrapping_add(offset),
                     size: sym.st_size as u32,
                 });
             }
@@ -103,7 +103,9 @@ impl FTrace {
         };
         
         self.buf.push(entry);
-        self.call_depth += 1;
+        if self.call_depth < 32{
+            self.call_depth += 1;
+        }
     }
     
     pub fn trace_ret(&mut self, pc: VAddr) {
@@ -147,10 +149,10 @@ lazy_static::lazy_static! {
     };
 }
 
-pub fn init_ftrace(elf_file: &str) {
+pub fn init_ftrace(elf_file: &str, offset: u32) {
     if !FTRACE { return; }
     
-    if let Err(e) = FTRACE_INST.lock().unwrap().load_elf(elf_file) {
+    if let Err(e) = FTRACE_INST.lock().unwrap().load_elf(elf_file, offset) {
         eprintln!("Failed to load ELF file for FTRACE: {}", e);
     }
 }

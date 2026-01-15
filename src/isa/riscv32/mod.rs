@@ -7,21 +7,31 @@ pub mod system;
 
 use crate::common::Word;
 // use crate::cpu::state::CPU;  // Unused
-use self::system::mmu::{isa_vaddr_read, MEM_TYPE_IFETCH};
+// use self::system::mmu::{isa_vaddr_read, MEM_TYPE_IFETCH};
 
 pub fn isa_exec_once(pc: Word) {
     // Fetch instruction
-    let inst = {
+    let inst_result = {
         let cpu = crate::cpu::state::CPU.lock().unwrap();
-        isa_vaddr_read(&cpu, pc, 4, MEM_TYPE_IFETCH)
+        crate::memory::vaddr::vaddr_ifetch(&cpu, pc, 4)
     };
     
-    // Log instruction trace
-    #[cfg(feature = "trace")]
-    {
-        crate::utils::itrace::log_inst(pc, inst);
+    match inst_result {
+        Ok(inst) => {
+            // Log instruction trace
+            // #[cfg(feature = "trace")]
+            {
+                crate::utils::itrace::log_inst(pc, inst);
+            }
+            // Decode and execute
+            inst::decode_exec(inst, pc);
+        }
+        Err(cause) => {
+             // Raise Instruction Page Fault (12)
+             crate::utils::intr_trace::trace_intr(cause, pc, false); // Trace exception
+             let new_pc = self::system::intr::isa_raise_intr(cause, pc);
+             let mut cpu = crate::cpu::state::CPU.lock().unwrap();
+             cpu.pc = new_pc; // Update PC to trap vector
+        }
     }
-    
-    // Decode and execute
-    inst::decode_exec(inst, pc);
 }

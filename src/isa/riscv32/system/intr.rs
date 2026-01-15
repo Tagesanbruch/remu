@@ -11,7 +11,8 @@ pub fn isa_query_intr() -> Word {
     let mie_reg = cpu.csr[CSR_MIE as usize];
     // Include CLINT interrupts dynamically
     let clint_mip = crate::device::clint::get_mip_status();
-    let mip_reg = cpu.csr[CSR_MIP as usize] | clint_mip;
+    let ext_mip = crate::device::intr::get_intr_state();
+    let mip_reg = cpu.csr[CSR_MIP as usize] | clint_mip | ext_mip;
     
     let mode = cpu.mode as u32; // 3=M, 1=S, 0=U
     
@@ -65,6 +66,8 @@ pub fn isa_raise_intr(no: Word, epc: Word) -> Word {
     
     if delegate_to_s {
         // Trap to S-mode
+        // crate::Log!("INTR: Delegated to S-mode Cause 0x{:x} at 0x{:08x}", cause_code, epc);
+        crate::utils::intr_trace::trace_intr(cause_code, epc, is_intr);
         cpu.csr[CSR_SCAUSE as usize] = no;
         cpu.csr[CSR_SEPC as usize] = epc;
         cpu.csr[CSR_STVAL as usize] = 0; // TODO: tval
@@ -89,6 +92,8 @@ pub fn isa_raise_intr(no: Word, epc: Word) -> Word {
         cpu.csr[CSR_STVEC as usize]
     } else {
         // Trap to M-mode
+        // crate::Log!("INTR: {} -> M-mode Cause 0x{:x} at 0x{:08x}", if is_intr { "Intr" } else { "Excp" }, cause_code, epc);
+        crate::utils::intr_trace::trace_intr(cause_code, epc, is_intr);
         cpu.csr[CSR_MCAUSE as usize] = no;
         cpu.csr[CSR_MEPC as usize] = epc;
         cpu.csr[CSR_MTVAL as usize] = 0; // TODO: tval

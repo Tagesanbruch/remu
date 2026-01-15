@@ -8,6 +8,7 @@ pub mod audio;
 pub mod disk;
 pub mod clint;
 pub mod plic;
+pub mod intr;
 pub mod sdl;
 
 pub fn init_device() {

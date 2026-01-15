@@ -14,9 +14,14 @@ pub struct DTraceEntry {
 
 impl ToString for DTraceEntry {
     fn to_string(&self) -> String {
-        let type_str = if self.is_write { "write" } else { "read" };
-        format!("{} {} at 0x{:08x} len={} data=0x{:08x}", 
-                self.device_name, type_str, self.addr, self.len, self.data)
+        // NEMU: WriteMMIO: clint, addr: 0x2000000, data: 0 
+        if self.is_write {
+             format!("WriteMMIO: {}, addr: 0x{:x}, data: 0x{:x}", 
+                self.device_name, self.addr, self.data)
+        } else {
+             format!("ReadMMIO: {}, addr: 0x{:x}", 
+                self.device_name, self.addr)
+        }
     }
 }
 

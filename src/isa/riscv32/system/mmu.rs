@@ -1,6 +1,6 @@
 use crate::common::{Word, PAddr, VAddr, PrivMode};
 use crate::cpu::state::CPU;
-use crate::memory::paddr_read;
+use crate::memory::paddr::paddr_read;
 use super::csr::{CSR_SATP, CSR_MSTATUS};
 use super::intr::isa_raise_intr;
 
@@ -20,13 +20,15 @@ pub fn isa_mmu_check(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, _len: usiz
     // Check M-Status MPRV? (Not typically used in simple OSs, but good for completeness)
     // For now: paging enabled if SATP_MODE=1 (bit 31) AND Priv < M
     if (satp & 0x80000000) != 0 && (mode != PrivMode::Machine) {
+        // crate::Log!("MMU: Check vaddr=0x{:08x} -> TRANSLATE (Mode={:?}, SATP=0x{:08x})", vaddr, mode, satp);
         return MMU_TRANSLATE;
     }
     
+    // crate::Log!("MMU: Check vaddr=0x{:08x} -> DIRECT", vaddr); // Verbose
     MMU_DIRECT
 }
 
-pub fn isa_mmu_translate(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, _len: usize, type_: i32) -> PAddr {
+pub fn isa_mmu_translate(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, _len: usize, type_: i32) -> Result<PAddr, Word> {
     let satp = cpu.csr[CSR_SATP as usize];
     let ppn_base = satp & 0x3FFFFF;
     
@@ -35,22 +37,13 @@ pub fn isa_mmu_translate(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, _len: 
     
     let pte_addr_l1 = (ppn_base << 12) + (vpn1 * 4);
     
-    // drop(cpu); // CPU lock is now held by caller or passed in reference
-    // We assume caller holds lock if reference is from MutexGuard
-    // Or caller passed reference from somewhere else.
-    // BUT paddr_read uses PMEM lock. This is safe (CPU -> PMEM).
-    
     let pte_l1 = paddr_read(pte_addr_l1, 4);
     
     // Check valid
     if (pte_l1 & 0x1) == 0 {
-        // Page Fault
-        // isa_raise_intr is tricky because it locks CPU. 
-        // We dropped lock above.
-        // But isa_mmu_translate typically called from deep inside execution...
-        // Let's just return 0 for now and assume caller handles it or we call raise_intr here
-        raise_pf(vaddr, type_);
-        return 0; // Invalid physical address?
+        crate::utils::mmu_trace::trace_mmu(vaddr, 0, type_, false);
+        let cause = report_pf(vaddr, type_);
+        return Err(cause);
     }
     
     // Leaf check? (R/W/X bits)
@@ -65,8 +58,9 @@ pub fn isa_mmu_translate(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, _len: 
         pte = paddr_read(pte_addr_l0, 4);
         
         if (pte & 0x1) == 0 {
-             raise_pf(vaddr, type_);
-             return 0;
+             crate::utils::mmu_trace::trace_mmu(vaddr, 0, type_, false);
+             let cause = report_pf(vaddr, type_);
+             return Err(cause);
         }
     } else {
         // Superpage (4MB)
@@ -78,49 +72,42 @@ pub fn isa_mmu_translate(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, _len: 
     let w = (pte >> 2) & 1;
     let x = (pte >> 3) & 1;
     
-    if type_ == MEM_TYPE_IFETCH && x == 0 { raise_pf(vaddr, type_); return 0; }
-    if type_ == MEM_TYPE_READ && r == 0 { raise_pf(vaddr, type_); return 0; } // MxR?
-    if type_ == MEM_TYPE_WRITE && w == 0 { raise_pf(vaddr, type_); return 0; }
+    if type_ == MEM_TYPE_IFETCH && x == 0 { 
+        crate::utils::mmu_trace::trace_mmu(vaddr, 0, type_, false);
+        return Err(report_pf(vaddr, type_)); 
+    }
+    if type_ == MEM_TYPE_READ && r == 0 { 
+        crate::utils::mmu_trace::trace_mmu(vaddr, 0, type_, false);
+        return Err(report_pf(vaddr, type_)); 
+    }
+    if type_ == MEM_TYPE_WRITE && w == 0 { 
+        crate::utils::mmu_trace::trace_mmu(vaddr, 0, type_, false);
+        return Err(report_pf(vaddr, type_)); 
+    }
     
     // Accessed/Dirty update (Should write back)
     // Skipped for now simplification
     
     let ppn = (pte >> 10) & 0x3FFFFF;
-    if pg_size == 1 {
+    let paddr = if pg_size == 1 {
         // 4MB
         (ppn << 12) | (vaddr & 0x3FFFFF)
     } else {
         // 4KB
         (ppn << 12) | (vaddr & 0xFFF)
-    }
+    };
+    
+    crate::utils::mmu_trace::trace_mmu(vaddr, paddr, type_, true);
+    Ok(paddr)
 }
 
-pub fn isa_vaddr_read(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, len: usize, type_: i32) -> Word {
-    if isa_mmu_check(cpu, vaddr, len, type_) == MMU_DIRECT {
-        paddr_read(vaddr, len)
-    } else {
-        let paddr = isa_mmu_translate(cpu, vaddr, len, type_);
-        paddr_read(paddr, len)
-    }
-}
-
-pub fn isa_vaddr_write(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, len: usize, data: Word, type_: i32) {
-    if isa_mmu_check(cpu, vaddr, len, type_) == MMU_DIRECT {
-        crate::memory::paddr_write(vaddr, len, data);
-    } else {
-        let paddr = isa_mmu_translate(cpu, vaddr, len, type_);
-        crate::memory::paddr_write(paddr, len, data);
-    }
-}
-
-fn raise_pf(_vaddr: VAddr, type_: i32) {
+fn report_pf(_vaddr: VAddr, type_: i32) -> Word {
     let code = match type_ {
         MEM_TYPE_IFETCH => 12, // Inst PF
         MEM_TYPE_READ => 13,   // Load PF
         MEM_TYPE_WRITE => 15,  // Store PF
         _ => 13
     };
-    log::error!("Page Fault: type={}, code={}", type_, code);
-    log::warn!("Minimal implementation does not support proper PF raising in mmu.rs yet to avoid deadlock.");
-    // Ideally we return an Error from translate, and inst.rs handles it by calling raise_intr.
+    log::error!("Page Fault: type={}, code={} at vaddr=0x{:08x}", type_, code, _vaddr);
+    code
 }

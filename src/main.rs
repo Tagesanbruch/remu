@@ -29,7 +29,9 @@ fn main() {
     // Initialize custom logging (NEMU-style)
     let log_file = config.log_file.as_deref().unwrap_or("build/remu-log.txt");
     std::fs::create_dir_all("build").ok();
+    std::fs::create_dir_all("build").ok();
     crate::utils::log::init_log(log_file);
+    crate::utils::log::init_panic_hook();
     
     Log!("REMU starting...");
     

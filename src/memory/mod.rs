@@ -1,9 +1,11 @@
 use crate::generated::config::*;
 
 pub mod mmio;
-pub mod pmem;
+pub mod paddr;
+pub mod vaddr;
 
-pub use pmem::{paddr_read, paddr_write, load_image};
+pub use paddr::{paddr_read, paddr_write, load_image};
+pub use vaddr::{vaddr_read, vaddr_write, vaddr_ifetch};
 
 pub fn init_mem() {
     // Initialize MMIO

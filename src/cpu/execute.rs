@@ -148,10 +148,7 @@ fn statistic() {
     
     // Show traces
     if crate::generated::config::TRACE {
-        crate::utils::itrace::show_itrace();
-        crate::utils::mtrace::show_mtrace();
-        crate::utils::ftrace::show_ftrace();
-        crate::utils::dtrace::show_dtrace();
+        crate::utils::print_trace_summary();
     }
     
     // Set bad exit status if needed

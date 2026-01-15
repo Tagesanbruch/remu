@@ -27,6 +27,10 @@ pub struct Config {
     #[arg(short = 'e', long = "elf", value_name = "ELF_FILE")]
     pub elf_file: Option<String>,
 
+    /// ELF symbol offset (e.g. 0x400000)
+    #[arg(long = "elf-offset", value_name = "OFFSET", default_value = "0")]
+    pub elf_offset: String,
+
     /// Image file to load (positional argument)
     #[arg(value_name = "IMAGE")]
     pub image: Option<std::path::PathBuf>,

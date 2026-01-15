@@ -30,6 +30,10 @@ override ARGS += $(ARGS_DIFF)
 # Command to execute REMU
 IMG ?=
 ELF ?=
+ifneq ($(strip $(ELF_OFFSET)),)
+    override ARGS += --elf-offset=$(ELF_OFFSET)
+endif
+
 ifeq ($(strip $(ELF)),)
     override ARGS += 
 else

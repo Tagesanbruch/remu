@@ -4,6 +4,8 @@ use crate::generated::config::*;
 use crate::memory::mmio::register_mmio;
 use crate::common::{PAddr, Word};
 
+// Note: Future input (rx_fifo) update should call crate::device::intr::set_seip(true/false)
+
 pub fn init_serial() {
     if !HAS_SERIAL { return; }
     
@@ -23,6 +25,10 @@ fn serial_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word
         }
         0
     } else {
+        let offset = addr - SERIAL_MMIO;
+        if offset == 5 { // LSR
+            return 0x20; // TX Register Empty
+        }
         0
     }
 }

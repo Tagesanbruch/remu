@@ -3,8 +3,12 @@
 use super::decode::DecodedInst;
 use crate::common::{Word, SWord, RemuState};
 use crate::cpu::state::CPU;
-use crate::memory::{paddr_read, paddr_write}; // Keep valid for direct use if any
-use super::system::mmu::{isa_vaddr_read, isa_vaddr_write, MEM_TYPE_READ, MEM_TYPE_WRITE};
+use crate::memory::paddr::{paddr_read, paddr_write}; // Keep valid for direct use if any
+use crate::memory::vaddr::{vaddr_read, vaddr_write};
+// MEM_TYPE imports from vaddr are no longer needed for calls, but maybe for other logic?
+// inst.rs doesn't seem to use them other than for those calls.
+// Let's keep them if unsure, or remove. The compiler warned about unused imports before.
+use crate::memory::vaddr::{MEM_TYPE_READ, MEM_TYPE_WRITE}; 
 use crate::utils::{set_state, set_halt};
 
 macro_rules! R {
@@ -91,16 +95,16 @@ pub fn decode_exec(inst: Word, pc: Word) {
             let addr = src1.wrapping_add(dec.imm);
             let val = match dec.funct3 {
                 0b000 => {  // LB
-                    let v = paddr_read(addr, 1);
+                    let v = vaddr_read(&*cpu, addr, 1);
                     ((v as i8) as i32) as u32
                 }
                 0b001 => {  // LH
-                    let v = paddr_read(addr, 2);
+                    let v = vaddr_read(&*cpu, addr, 2);
                     ((v as i16) as i32) as u32
                 }
-                0b010 => paddr_read(addr, 4),  // LW
-                0b100 => paddr_read(addr, 1),  // LBU
-                0b101 => paddr_read(addr, 2),  // LHU
+                0b010 => vaddr_read(&*cpu, addr, 4),  // LW
+                0b100 => vaddr_read(&*cpu, addr, 1),  // LBU
+                0b101 => vaddr_read(&*cpu, addr, 2),  // LHU
                 _ => {
                     log::error!("Invalid load funct3: 0b{:03b}", dec.funct3);
                     0
@@ -115,9 +119,9 @@ pub fn decode_exec(inst: Word, pc: Word) {
             let src2 = R!(cpu, dec.rs2);
             let addr = src1.wrapping_add(dec.imm);
             match dec.funct3 {
-                0b000 => isa_vaddr_write(&*cpu, addr, 1, src2, MEM_TYPE_WRITE),  // SB
-                0b001 => isa_vaddr_write(&*cpu, addr, 2, src2, MEM_TYPE_WRITE),  // SH
-                0b010 => isa_vaddr_write(&*cpu, addr, 4, src2, MEM_TYPE_WRITE),  // SW
+                0b000 => vaddr_write(&*cpu, addr, 1, src2),  // SB
+                0b001 => vaddr_write(&*cpu, addr, 2, src2),  // SH
+                0b010 => vaddr_write(&*cpu, addr, 4, src2),  // SW
                 _ => log::error!("Invalid store funct3: 0b{:03b}", dec.funct3),
             }
         }
@@ -217,72 +221,72 @@ pub fn decode_exec(inst: Word, pc: Word) {
             
             match (dec.funct7 >> 2, dec.funct3) {
                 (0b00010, 0b010) => {  // LR.W
-                    let val = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
+                    let val = vaddr_read(&*cpu, addr, 4);
                     W!(cpu, dec.rd, val);
                     // TODO: Set reservation
                 }
                 (0b00011, 0b010) => {  // SC.W
                     let src2 = R!(cpu, dec.rs2);
-                    isa_vaddr_write(&*cpu, addr, 4, src2, MEM_TYPE_WRITE);
+                    vaddr_write(&*cpu, addr, 4, src2);
                     W!(cpu, dec.rd, 0);  // Always succeed for now
                     // TODO: Check reservation
                 }
                 (0b00001, 0b010) => {  // AMOSWAP.W
-                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
+                    let t = vaddr_read(&*cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
-                    isa_vaddr_write(&*cpu, addr, 4, src2, MEM_TYPE_WRITE);
+                    vaddr_write(&*cpu, addr, 4, src2);
                     W!(cpu, dec.rd, t);
                 }
                 (0b00000, 0b010) => {  // AMOADD.W
-                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
+                    let t = vaddr_read(&*cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
-                    isa_vaddr_write(&*cpu, addr, 4, t.wrapping_add(src2), MEM_TYPE_WRITE);
+                    vaddr_write(&*cpu, addr, 4, t.wrapping_add(src2));
                     W!(cpu, dec.rd, t);
                 }
                 (0b00100, 0b010) => {  // AMOXOR.W
-                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
+                    let t = vaddr_read(&*cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
-                    isa_vaddr_write(&*cpu, addr, 4, t ^ src2, MEM_TYPE_WRITE);
+                    vaddr_write(&*cpu, addr, 4, t ^ src2);
                     W!(cpu, dec.rd, t);
                 }
                 (0b01100, 0b010) => {  // AMOAND.W
-                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
+                    let t = vaddr_read(&*cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
-                    isa_vaddr_write(&*cpu, addr, 4, t & src2, MEM_TYPE_WRITE);
+                    vaddr_write(&*cpu, addr, 4, t & src2);
                     W!(cpu, dec.rd, t);
                 }
                 (0b01000, 0b010) => {  // AMOOR.W
-                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
+                    let t = vaddr_read(&*cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
-                    isa_vaddr_write(&*cpu, addr, 4, t | src2, MEM_TYPE_WRITE);
+                    vaddr_write(&*cpu, addr, 4, t | src2);
                     W!(cpu, dec.rd, t);
                 }
                 (0b10000, 0b010) => {  // AMOMIN.W
-                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
+                    let t = vaddr_read(&*cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
                     let min = if (t as SWord) < (src2 as SWord) { t } else { src2 };
-                    isa_vaddr_write(&*cpu, addr, 4, min, MEM_TYPE_WRITE);
+                    vaddr_write(&*cpu, addr, 4, min);
                     W!(cpu, dec.rd, t);
                 }
                 (0b10100, 0b010) => {  // AMOMAX.W
-                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
+                    let t = vaddr_read(&*cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
                     let max = if (t as SWord) > (src2 as SWord) { t } else { src2 };
-                    isa_vaddr_write(&*cpu, addr, 4, max, MEM_TYPE_WRITE);
+                    vaddr_write(&*cpu, addr, 4, max);
                     W!(cpu, dec.rd, t);
                 }
                 (0b11000, 0b010) => {  // AMOMINU.W
-                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
+                    let t = vaddr_read(&*cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
                     let min = if t < src2 { t } else { src2 };
-                    isa_vaddr_write(&*cpu, addr, 4, min, MEM_TYPE_WRITE);
+                    vaddr_write(&*cpu, addr, 4, min);
                     W!(cpu, dec.rd, t);
                 }
                 (0b11100, 0b010) => {  // AMOMAXU.W
-                    let t = isa_vaddr_read(&*cpu, addr, 4, MEM_TYPE_READ);
+                    let t = vaddr_read(&*cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
                     let max = if t > src2 { t } else { src2 };
-                    isa_vaddr_write(&*cpu, addr, 4, max, MEM_TYPE_WRITE);
+                    vaddr_write(&*cpu, addr, 4, max);
                     W!(cpu, dec.rd, t);
                 }
                 _ => {
@@ -295,9 +299,20 @@ pub fn decode_exec(inst: Word, pc: Word) {
         0b0001111 => {
             // FENCE/FENCE.I - treated as NOP
         }
-        // System instructions
+        // FENCE.VMA / SFENCE.VMA
+         0b0001001 => {
+             // SFENCE.VMA - TLB flush, treated as NOP for now (flushing not strictly needed if we don't cache translations persistently across flushes properly yet, or if we just want to proceed)
+             // opcode 1110011 (system), funct3 000, funct7 0001001
+         }
+        // System instructions (0b1110011)
         0b1110011 => {
-            match (dec.funct7, dec.rs2, dec.funct3) {
+             // Special check for SFENCE.VMA which is System opcode but funct7=0001001
+             if dec.funct7 == 0b0001001 {
+                  // SFENCE.VMA
+                  // return; // Don't return, let PC update!
+             }
+             
+             match (dec.funct7, dec.rs2, dec.funct3) {
                 (0b0000000, 0b00000, 0b000) => {  // ECALL
                     // Determine mode for ECALL cause (User=8, Supervisor=9, Machine=11)
                     let cause = match cpu.mode {
@@ -306,18 +321,18 @@ pub fn decode_exec(inst: Word, pc: Word) {
                         crate::common::PrivMode::User => 8,
                         _ => 11
                     };
+                    crate::utils::ecall_trace::trace_ecall(pc, cause, cpu.mode as u8);
                     drop(cpu); // Unlock for raise_intr
                     let new_pc = super::system::intr::isa_raise_intr(cause, pc);
                     CPU.lock().unwrap().pc = new_pc;
                     return;
                 }
                 (0b0000000, 0b00001, 0b000) => {  // EBREAK
-                    // REMU trap - directly end execution (for built-in image test)
-                    let a0 = R!(cpu, 10);
-                    set_halt(pc, a0 as i32);
-                    set_state(RemuState::End);
-                    drop(cpu);  // Release lock before returning
-                    return;
+                     // EBREAK cause = 3
+                     drop(cpu);
+                     let new_pc = super::system::intr::isa_raise_intr(3, pc);
+                     CPU.lock().unwrap().pc = new_pc;
+                     return;
                 }
                 (0b0011000, 0b00010, 0b000) => { // MRET
                     let mstatus = cpu.get_csr(super::system::csr::CSR_MSTATUS);

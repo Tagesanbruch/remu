@@ -22,7 +22,8 @@ pub fn init_monitor(cfg: &Config) {
     
     // Initialize FTRACE
     if let Some(elf_file) = &cfg.elf_file {
-        crate::utils::ftrace::init_ftrace(elf_file);
+        let offset = u32::from_str_radix(cfg.elf_offset.trim_start_matches("0x"), 16).unwrap_or(0);
+        crate::utils::ftrace::init_ftrace(elf_file, offset);
     }
     
     // Initialize devices

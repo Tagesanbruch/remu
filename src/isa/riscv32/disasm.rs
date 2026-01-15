@@ -143,6 +143,10 @@ pub fn disasm(inst: Word, _pc: Word) -> String {
                 "ebreak".to_string()
             } else if inst == 0x30200073 {
                 "mret".to_string()
+            } else if inst == 0x10200073 {
+                "sret".to_string()
+            } else if funct7 == 0b0001001 && funct3 == 0 {
+                format!("sfence.vma\t{}, {}", reg_name(rs1), reg_name(rs2))
             } else if funct3 >= 1 && funct3 <= 7 {
                 let csr = (inst >> 20) & 0xfff;
                 let mnem = match funct3 {

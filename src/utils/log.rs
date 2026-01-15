@@ -44,6 +44,19 @@ pub fn init_log(logfile: &str) {
     _log(file!(), line!(), "", &format!("Log is written to {}", logfile));
 }
 
+pub fn init_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // Print traces
+        // Need to access super::print_trace_summary, but log.rs is a module.
+        // We can't easily call across crates if not public, but here same crate.
+        // remu::utils::print_trace_summary()
+        crate::utils::print_trace_summary();
+        
+        default_hook(info);
+    }));
+}
+
 pub fn _log(file: &str, line: u32, func: &str, message: &str) {
     // Extract filename from full path
     let filename = file.split('/').last().unwrap_or(file);
