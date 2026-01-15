@@ -1,10 +1,15 @@
-```toml
 [package]
 name = "remu"
 version = "0.1.0"
 edition = "2021"
 authors = ["REMU Contributors"]
 description = "A complete RISC-V32IM emulator written in Rust"
+
+[features]
+default = ["trace"]
+device = ["dep:sdl2"]  # Only include SDL2 when device feature is enabled
+trace = []
+difftest = []
 
 [dependencies]
 # CLI and configuration
@@ -13,73 +18,17 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
 
-# Logging
-env_logger = "0.11"
-log = "0.4"
+# Utilities  
 lazy_static = "1.4"
-
-# SDL2 for devices (VGA, keyboard, audio)
-sdl2 = { version = "0.37", features = ["bundled", "static-link"], optional = true }
-
-# Utilities
 byteorder = "1.5"
-memmap2 = { version = "0.9", optional = true }
-libc = "0.2"
 
-# Disassembler (optional for ITRACE)
-# We'll implement simple RISC-V disassembler ourselves
+# Optional dependencies
+sdl2 = { version = "0.37", optional = true }
+memmap2 = { version = "0.9", optional = true }
+
+# Logging (optional, for fallback)
+log = "0.4"
 
 [build-dependencies]
-# For build.rs to generate config constants
-
-[features]
-default = ["device"]
-
-# Devices
-device = ["sdl2", "serial", "timer", "keyboard", "vga", "audio", "disk"]
-serial = []
-timer = []
-keyboard = ["sdl2"]
-vga = ["sdl2"]
-audio = ["sdl2"]
-disk = ["memmap2"]
-clint = []
-plic = []
-sdcard = ["disk"]
-
-# Tracing
-trace = ["itrace", "mtrace", "ftrace", "dtrace"]
-itrace = []
-mtrace = []
-ftrace = []
-dtrace = []
-trace_intr = []
-trace_mmu = []
-trace_plic = []
-trace_ecall = []
-
-# Debugging
-watchpoint = []
-difftest = []
-
-# Memory options
-pmem_malloc = []
-
-# Target
-target_am = []
-
-[profile.dev]
-opt-level = 0
-debug = true
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-debug = false
-strip = true
-
-[profile.release-with-debug]
-inherits = "release"
-debug = true
-strip = false
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
