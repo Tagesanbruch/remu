@@ -1,0 +1,46 @@
+// Auto-generated configuration from Kconfig
+// DO NOT EDIT MANUALLY
+
+pub const AUDIO_CTL_MMIO: u32 = 0xa0000200;
+pub const CC_OPT: &str = "-O3";
+pub const DEVICE: bool = true;
+pub const DISK_CTL_MMIO: u32 = 0xa0000300;
+pub const DISK_IMG_PATH: u64 = "";
+pub const DTRACE: bool = true;
+pub const DTRACE_COND: &str = "true";
+pub const DTRACE_RINGBUF: u64 = 32;
+pub const FB_ADDR: u32 = 0xa1000000;
+pub const FTRACE: bool = true;
+pub const FTRACE_BUF: u64 = 1024;
+pub const FTRACE_COND: &str = "true";
+pub const HAS_AUDIO: bool = true;
+pub const HAS_CLINT: bool = true;
+pub const HAS_DISK: bool = true;
+pub const HAS_KEYBOARD: bool = true;
+pub const HAS_PLIC: bool = true;
+pub const HAS_SERIAL: bool = true;
+pub const HAS_TIMER: bool = true;
+pub const HAS_VGA: bool = true;
+pub const I8042_DATA_MMIO: u32 = 0xa0000060;
+pub const ISA: &str = "riscv32";
+pub const ISA_riscv: bool = true;
+pub const ITRACE: bool = true;
+pub const ITRACE_COND: &str = "true";
+pub const ITRACE_RINGBUF: u64 = 32;
+pub const MBASE: u32 = 0x80000000;
+pub const MEM_RANDOM: bool = true;
+pub const MSIZE: u32 = 0x8000000;
+pub const MTRACE: bool = true;
+pub const MTRACE_COND: &str = "true";
+pub const MTRACE_RINGBUF: u64 = 32;
+pub const PC_RESET_OFFSET: u64 = 0;
+pub const RTC_MMIO: u32 = 0xa0000048;
+pub const SB_ADDR: u32 = 0xa1200000;
+pub const SB_SIZE: u32 = 0x10000;
+pub const SERIAL_MMIO: u32 = 0xa00003f8;
+pub const TRACE: bool = true;
+pub const TRACE_END: u64 = 10000;
+pub const TRACE_START: u64 = 0;
+pub const VGA_CTL_MMIO: u32 = 0xa0000100;
+pub const VGA_SHOW_SCREEN: bool = true;
+pub const WATCHPOINT: bool = true;

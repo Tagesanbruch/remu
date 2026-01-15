@@ -1,0 +1,39 @@
+# Rust/Cargo build artifacts
+target/
+Cargo.lock
+
+# Build outputs
+build/
+*.bin
+*.elf
+*.so
+*.a
+*.o
+
+# Generated configuration
+src/generated/
+include/generated/
+include/config/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs
+*.log
+*.txt
+nemu-log.txt
+remu-log.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Kconfig outputs
+.config.old
+autoconf.h
+
+# Temporary files
+.rustnemu_deps.txt
