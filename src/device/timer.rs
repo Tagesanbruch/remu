@@ -38,8 +38,11 @@ fn rtc_callback(addr: PAddr, _len: usize, is_write: bool, _data: Word) -> Word {
 pub fn get_time_u64() -> u64 {
     let boot_time = BOOT_TIME.lock().unwrap();
     if let Some(boot) = *boot_time {
-        boot.elapsed().as_micros() as u64
+        let us = boot.elapsed().as_micros() as u64;
+        // crate::Log!("Timer: get_time_u64 -> {}", us); // Very verbose
+        us
     } else {
+        crate::Log!("Timer: BOOT_TIME is None!");
         0
     }
 }

@@ -335,8 +335,8 @@ pub fn decode_exec(inst: Word, pc: Word) {
                      return;
                 }
                 (0b0011000, 0b00010, 0b000) => { // MRET
-                    let mstatus = cpu.get_csr(super::system::csr::CSR_MSTATUS);
-                    let mepc = cpu.get_csr(super::system::csr::CSR_MEPC);
+                    let mstatus = super::system::csr::isa_csr_read(&cpu, super::system::csr::CSR_MSTATUS);
+                    let mepc = super::system::csr::isa_csr_read(&cpu, super::system::csr::CSR_MEPC);
                     
                     // Restore MIE = MPIE
                     let mpie = (mstatus >> 7) & 1;
@@ -349,7 +349,7 @@ pub fn decode_exec(inst: Word, pc: Word) {
                     new_mstatus |= 1 << 7; // MPIE = 1
                     new_mstatus &= !(3 << 11); // MPP = 0 (User)
                     
-                    cpu.set_csr(super::system::csr::CSR_MSTATUS, new_mstatus);
+                    super::system::csr::isa_csr_write(&mut cpu, super::system::csr::CSR_MSTATUS, new_mstatus);
                     
                     cpu.mode = match mpp {
                         3 => crate::common::PrivMode::Machine,
@@ -365,8 +365,8 @@ pub fn decode_exec(inst: Word, pc: Word) {
                 }
                 (0b0001000, 0b00010, 0b000) => { // SRET
                      // Similar to MRET but for Supervisor
-                     let sstatus = cpu.get_csr(super::system::csr::CSR_SSTATUS); // actually accesses MSTATUS
-                     let sepc = cpu.get_csr(super::system::csr::CSR_SEPC);
+                     let sstatus = super::system::csr::isa_csr_read(&cpu, super::system::csr::CSR_SSTATUS); // actually accesses MSTATUS
+                     let sepc = super::system::csr::isa_csr_read(&cpu, super::system::csr::CSR_SEPC);
                      
                      // Restore SIE = SPIE
                      let spie = (sstatus >> 5) & 1;
@@ -378,7 +378,7 @@ pub fn decode_exec(inst: Word, pc: Word) {
                      new_sstatus &= !(1 << 8); // SPP = 0 (User)
                      
                      // Need to write back to MSTATUS (handled by set_csr SSTATUS alias)
-                     cpu.set_csr(super::system::csr::CSR_SSTATUS, new_sstatus);
+                     super::system::csr::isa_csr_write(&mut cpu, super::system::csr::CSR_SSTATUS, new_sstatus);
                      
                      cpu.mode = match spp {
                          1 => crate::common::PrivMode::Supervisor,
@@ -392,7 +392,7 @@ pub fn decode_exec(inst: Word, pc: Word) {
                     // CSR instructions
                     dec.decode_i();
                     let csr_addr = (dec.imm & 0xfff) as u16;
-                    let mut csr_val = cpu.get_csr(csr_addr);
+                    let mut csr_val = super::system::csr::isa_csr_read(&cpu, csr_addr);
                     
                     if csr_addr == crate::isa::riscv32::system::csr::CSR_MIP {
                          csr_val |= crate::device::clint::get_mip_status();
@@ -401,32 +401,32 @@ pub fn decode_exec(inst: Word, pc: Word) {
                     let new_val = match dec.funct3 {
                         0b001 => {  // CSRRW
                             let rs1_val = R!(cpu, dec.rs1);
-                            cpu.set_csr(csr_addr, rs1_val);
+                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, rs1_val);
                             csr_val
                         }
                         0b010 => {  // CSRRS
                             let rs1_val = R!(cpu, dec.rs1);
-                            cpu.set_csr(csr_addr, csr_val | rs1_val);
+                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, csr_val | rs1_val);
                             csr_val
                         }
                         0b011 => {  // CSRRC
                             let rs1_val = R!(cpu, dec.rs1);
-                            cpu.set_csr(csr_addr, csr_val & !rs1_val);
+                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, csr_val & !rs1_val);
                             csr_val
                         }
                         0b101 => {  // CSRRWI
                             let zimm = dec.rs1 as u32;
-                            cpu.set_csr(csr_addr, zimm);
+                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, zimm);
                             csr_val
                         }
                         0b110 => {  // CSRRSI
                             let zimm = dec.rs1 as u32;
-                            cpu.set_csr(csr_addr, csr_val | zimm);
+                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, csr_val | zimm);
                             csr_val
                         }
                         0b111 => {  // CSRRCI
                             let zimm = dec.rs1 as u32;
-                            cpu.set_csr(csr_addr, csr_val & !zimm);
+                            super::system::csr::isa_csr_write(&mut cpu, csr_addr, csr_val & !zimm);
                             csr_val
                         }
                         _ => csr_val,

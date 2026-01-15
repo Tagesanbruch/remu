@@ -22,18 +22,28 @@ pub const CSR_SATP: u16 = 0x180;
 pub const CSR_STVEC: u16 = 0x105;
 pub const CSR_MEDELEG: u16 = 0x302;
 pub const CSR_MIDELEG: u16 = 0x303;
+pub const CSR_TIME: u16 = 0xc01;
+pub const CSR_TIMEH: u16 = 0xc81;
 
-pub fn csr_read(addr: u16) -> Word {
-    let cpu = CPU.lock().unwrap();
+pub fn isa_csr_read(cpu: &crate::cpu::state::CpuState, addr: u16) -> Word {
     match addr {
         CSR_SSTATUS => {
             // SSTATUS maps to MSTATUS restricted view
             let mstatus = cpu.csr[CSR_MSTATUS as usize];
-            mstatus & 0x800DE162 // Mask S-mode visible bits (SIE, SPIE, SPP, FS, XS, SUM, MXR, UPR)
-            // Simplified: just return meaningful bits for now
+            mstatus & 0x800DE162 // Mask S-mode visible bits
         }
         CSR_SIE => cpu.csr[CSR_MIE as usize] & cpu.csr[CSR_MIDELEG as usize],
         CSR_SIP => cpu.csr[CSR_MIP as usize] & cpu.csr[CSR_MIDELEG as usize],
+        CSR_TIME => {
+            let t = crate::device::timer::get_time_u32(0);
+            // crate::Log!("CSR: Read TIME -> {}", t);
+            t
+        },
+        CSR_TIMEH => {
+            let t = crate::device::timer::get_time_u32(1);
+            // crate::Log!("CSR: Read TIMEH -> {}", t);
+            t
+        },
         _ => {
             if (addr as usize) < cpu.csr.len() {
                 cpu.csr[addr as usize]
@@ -44,8 +54,7 @@ pub fn csr_read(addr: u16) -> Word {
     }
 }
 
-pub fn csr_write(addr: u16, data: Word) {
-    let mut cpu = CPU.lock().unwrap();
+pub fn isa_csr_write(cpu: &mut crate::cpu::state::CpuState, addr: u16, data: Word) {
     match addr {
        CSR_SSTATUS => {
            // Write to MSTATUS alias
@@ -69,4 +78,14 @@ pub fn csr_write(addr: u16, data: Word) {
             }
         }
     }
+}
+
+pub fn csr_read(addr: u16) -> Word {
+    let cpu = CPU.lock().unwrap();
+    isa_csr_read(&cpu, addr)
+}
+
+pub fn csr_write(addr: u16, data: Word) {
+    let mut cpu = CPU.lock().unwrap();
+    isa_csr_write(&mut cpu, addr, data);
 }
