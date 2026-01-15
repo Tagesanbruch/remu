@@ -111,13 +111,13 @@ pub fn vga_update_screen() {
     let mut state = VGA_STATE.lock().unwrap();
     if state.sync != 0 {
         // Debug: Sum vmem content (Keep debug for now to confirm)
-        let mut sum: u64 = 0;
-        let mut non_zero_count: u64 = 0;
-        for &byte in &state.vmem {
-            sum += byte as u64;
-            if byte != 0 { non_zero_count += 1; }
-        }
-        println!("[VGA Debug] Sync handled. vga_ctl_sync={}, vmem_sum={}, non_zero_bytes={}", state.sync, sum, non_zero_count);
+        // let mut sum: u64 = 0;
+        // let mut non_zero_count: u64 = 0;
+        // for &byte in &state.vmem {
+        //     sum += byte as u64;
+        //     if byte != 0 { non_zero_count += 1; }
+        // }
+        // println!("[VGA Debug] Sync handled. vga_ctl_sync={}, vmem_sum={}, non_zero_bytes={}", state.sync, sum, non_zero_count);
         
         crate::device::sdl::update_screen(&state.vmem);
         state.sync = 0;
