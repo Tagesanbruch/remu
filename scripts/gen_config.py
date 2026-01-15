@@ -9,9 +9,58 @@ import sys
 import os
 from pathlib import Path
 
+# Default configuration values for known keys
+DEFAULT_CONFIGS = {
+    "TRACE": "n",
+    "TRACE_START": "0",
+    "TRACE_END": "0",
+    "ITRACE": "n",
+    "ITRACE_COND": '"false"',
+    "ITRACE_RINGBUF": "0",
+    "MTRACE": "n",
+    "MTRACE_COND": '"false"',
+    "MTRACE_RINGBUF": "0",
+    "FTRACE": "n",
+    "FTRACE_COND": '"false"',
+    "FTRACE_BUF": "0",
+    "DTRACE": "n",
+    "DTRACE_COND": '"false"',
+    "DTRACE_RINGBUF": "0",
+    "TRACE_INTR": "n",
+    "TRACE_MMU": "n",
+    "TRACE_PLIC": "n",
+    "TRACE_ECALL": "n",
+    "DEVICE": "n",
+    "HAS_VGA": "n",
+    "VGA_SHOW_SCREEN": "n",
+    "VGA_WIDTH": "400",
+    "VGA_HEIGHT": "300",
+    "HAS_KEYBOARD": "n",
+    "I8042_DATA_MMIO": "0",
+    "HAS_SERIAL": "n",
+    "SERIAL_MMIO": "0",
+    "HAS_TIMER": "n",
+    "RTC_MMIO": "0",
+    "HAS_AUDIO": "n",
+    "HAS_DISK": "n",
+    "HAS_CLINT": "n",
+    "HAS_PLIC": "n",
+    "FB_ADDR": "0",
+    "VGA_CTL_MMIO": "0",
+    "SB_ADDR": "0",
+    "SB_SIZE": "0",
+    "AUDIO_CTL_MMIO": "0",
+    "DISK_CTL_MMIO": "0",
+    "TIMER_GETTIMEOFDAY": "n",
+    "TIMER_CLOCK_GETTIME": "n",
+    "RT_CHECK": "n",
+    "WATCHPOINT": "n",
+    "EVAL_DEBUG": "n",
+}
+
 def parse_config(config_file):
     """Parse .config file and return dictionary of config values"""
-    configs = {}
+    configs = DEFAULT_CONFIGS.copy()
     
     if not os.path.exists(config_file):
         print(f"Warning: {config_file} not found")
@@ -20,6 +69,12 @@ def parse_config(config_file):
     with open(config_file, 'r') as f:
         for line in f:
             line = line.strip()
+            
+            # Handle "# CONFIG_XXX is not set"
+            if line.startswith("# CONFIG_") and line.endswith(" is not set"):
+                key = line[9:-11]
+                configs[key] = "n"
+                continue
             
             # Skip comments and empty lines
             if not line or line.startswith('#'):
