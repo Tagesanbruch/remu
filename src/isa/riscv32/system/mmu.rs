@@ -28,12 +28,27 @@ pub fn isa_mmu_check(cpu: &crate::cpu::state::CpuState, _vaddr: VAddr, _len: usi
     MMU_DIRECT
 }
 
-pub fn isa_mmu_translate(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, _len: usize, type_: i32) -> Result<PAddr, Word> {
+pub fn isa_mmu_translate(cpu: &mut crate::cpu::state::CpuState, vaddr: VAddr, _len: usize, type_: i32) -> Result<PAddr, Word> {
     let satp = cpu.csr[CSR_SATP as usize];
     let ppn_base = satp & 0x3FFFFF;
     
+    let vpn = (vaddr >> 12);
     let vpn1 = (vaddr >> 22) & 0x3FF;
     let vpn0 = (vaddr >> 12) & 0x3FF;
+
+    // TLB Lookup
+    let tlb_idx = (vpn as usize) & 0x3F; // Mod 64
+    let entry = cpu.tlb[tlb_idx];
+    if entry.valid && entry.vpn == vpn {
+         // TLB Hit
+         cpu.tlb_hit += 1;
+         let offset = vaddr & 0xFFF;
+         crate::utils::mmu_trace::trace_mmu(vaddr, (entry.ppn << 12) | offset, type_, true);
+         return Ok((entry.ppn << 12) | offset);
+    }
+    
+    // TLB Miss
+    cpu.tlb_miss += 1;
     
     let pte_addr_l1 = (ppn_base << 12) + (vpn1 * 4);
     
@@ -96,6 +111,19 @@ pub fn isa_mmu_translate(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, _len: 
         // 4KB
         (ppn << 12) | (vaddr & 0xFFF)
     };
+    
+    // TLB Fill
+    let tlb_idx = (vpn as usize) & 0x3F;
+    cpu.tlb[tlb_idx] = crate::cpu::state::TLBEntry {
+        vpn: vpn,
+        ppn: ppn, // Note: For 4MB pages this might be wrong if we just use vpn. 
+                  // But our VPN is 20-bit. For 4MB, vpn0 is irrelevant?
+                  // If 4MB, vpn covers 4MB range? No, vpn is 4KB page number.
+                  // If superpage, we need to handle it.
+                  // For simplicity: ONLY cache 4KB pages for now.
+        valid: pg_size == 0, 
+    };
+    // Force valid to false if superpage to fallback to walk (safer)
     
     crate::utils::mmu_trace::trace_mmu(vaddr, paddr, type_, true);
     Ok(paddr)

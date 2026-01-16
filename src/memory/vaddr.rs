@@ -9,7 +9,7 @@ pub const MEM_TYPE_IFETCH: i32 = 0;
 pub const MEM_TYPE_READ: i32 = 1;
 pub const MEM_TYPE_WRITE: i32 = 2;
 
-pub fn vaddr_read(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, len: usize) -> Word {
+pub fn vaddr_read(cpu: &mut crate::cpu::state::CpuState, vaddr: VAddr, len: usize) -> Word {
     if isa_mmu_check(cpu, vaddr, len, MEM_TYPE_READ) == MMU_DIRECT {
         paddr_read(vaddr, len)
     } else {
@@ -32,7 +32,7 @@ pub fn vaddr_read(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, len: usize) -
     }
 }
 
-pub fn vaddr_write(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, len: usize, data: Word) {
+pub fn vaddr_write(cpu: &mut crate::cpu::state::CpuState, vaddr: VAddr, len: usize, data: Word) {
     if isa_mmu_check(cpu, vaddr, len, MEM_TYPE_WRITE) == MMU_DIRECT {
         crate::memory::paddr::paddr_write(vaddr, len, data);
     } else {
@@ -45,7 +45,7 @@ pub fn vaddr_write(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, len: usize, 
     }
 }
 
-pub fn vaddr_ifetch(cpu: &crate::cpu::state::CpuState, vaddr: VAddr, len: usize) -> Result<Word, Word> {
+pub fn vaddr_ifetch(cpu: &mut crate::cpu::state::CpuState, vaddr: VAddr, len: usize) -> Result<Word, Word> {
     if isa_mmu_check(cpu, vaddr, len, MEM_TYPE_IFETCH) == MMU_DIRECT {
         Ok(paddr_read(vaddr, len))
     } else {

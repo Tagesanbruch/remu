@@ -72,6 +72,14 @@ pub fn isa_csr_write(cpu: &mut crate::cpu::state::CpuState, addr: u16, data: Wor
            let old = cpu.csr[CSR_MIP as usize];
            cpu.csr[CSR_MIP as usize] = (old & !mask) | (data & mask);
        }
+       CSR_SATP => {
+            if cpu.csr[CSR_SATP as usize] != data {
+                 cpu.csr[CSR_SATP as usize] = data;
+                 for entry in cpu.tlb.iter_mut() {
+                     entry.valid = false;
+                 }
+            }
+       }
         _ => {
             if (addr as usize) < cpu.csr.len() {
                 cpu.csr[addr as usize] = data;

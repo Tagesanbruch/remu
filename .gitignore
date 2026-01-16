@@ -1,3 +1,10 @@
+<<<<<<< HEAD
+/target/
+Cargo.lock
+*.bin
+*.elf
+*.log
+=======
 # Rust/Cargo build artifacts
 target/
 Cargo.lock
@@ -36,4 +43,5 @@ Thumbs.db
 autoconf.h
 
 # Temporary files
+>>>>>>> temp
 .rustnemu_deps.txt

@@ -120,10 +120,18 @@ pub fn statistic() {
     
     Log!("{}host time spent = {} us{}",
         ANSI_FG_BLUE, time_formatted, ANSI_NONE);
-    Log!("{}total guest instructions = {}{}",
-        ANSI_FG_BLUE, guest_inst, ANSI_NONE);
-    Log!("{}simulation frequency = {:.0} inst/s{}",
-        ANSI_FG_BLUE, freq, ANSI_NONE);
+
+    let cpu_guard = CPU.lock().unwrap();
+    let cpu = &*cpu_guard;
+
+    log::info!("total guest instructions = {}", guest_inst);
+    log::info!("tlb hit = {}, tlb miss = {}, hit rate = {:.2}%", 
+        cpu.tlb_hit, cpu.tlb_miss, 
+        if cpu.tlb_hit + cpu.tlb_miss > 0 { 
+            (cpu.tlb_hit as f64 / (cpu.tlb_hit + cpu.tlb_miss) as f64) * 100.0 
+        } else { 0.0 }
+    );
+    log::info!("simulation frequency = {} inst/s", (guest_inst as f64 / elapsed.as_secs_f64()) as u64);
     
     if crate::generated::config::TRACE {
         crate::utils::print_trace_summary();

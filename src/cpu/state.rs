@@ -4,6 +4,19 @@ use crate::common::{Word, PrivMode};
 use crate::config::RuntimeConfig;
 use std::sync::{Arc, Mutex};
 
+#[derive(Clone, Copy, Debug)]
+pub struct TLBEntry {
+    pub vpn: u32,
+    pub ppn: u32,
+    pub valid: bool,
+}
+
+impl Default for TLBEntry {
+    fn default() -> Self {
+        Self { vpn: 0, ppn: 0, valid: false }
+    }
+}
+
 pub struct CpuState {
     pub pc: u32,
     pub gpr: [Word; 32],
@@ -11,6 +24,9 @@ pub struct CpuState {
     pub mode: PrivMode,
     pub is_exception: bool,
     pub exception_entry: u32,
+    pub tlb: [TLBEntry; 64],
+    pub tlb_hit: u64,
+    pub tlb_miss: u64,
 }
 
 impl CpuState {
@@ -22,6 +38,9 @@ impl CpuState {
             mode: PrivMode::Machine,
             is_exception: false,
             exception_entry: 0,
+            tlb: [TLBEntry::default(); 64],
+            tlb_hit: 0,
+            tlb_miss: 0,
         }
     }
 
@@ -51,6 +70,7 @@ impl CpuState {
         self.csr[0x301] = misa;
     }
 
+    #[inline(always)]
     pub fn get_gpr(&self, idx: usize) -> Word {
         if idx == 0 {
             0  // x0 is always 0
@@ -59,16 +79,19 @@ impl CpuState {
         }
     }
 
+    #[inline(always)]
     pub fn set_gpr(&mut self, idx: usize, val: Word) {
         if idx != 0 {
             self.gpr[idx] = val;
         }
     }
 
+    #[inline(always)]
     pub fn get_csr(&self, addr: u16) -> Word {
         self.csr[addr as usize]
     }
 
+    #[inline(always)]
     pub fn set_csr(&mut self, addr: u16, val: Word) {
         self.csr[addr as usize] = val;
     }

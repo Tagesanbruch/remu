@@ -91,16 +91,16 @@ pub fn decode_exec(cpu: &mut crate::cpu::state::CpuState, inst: Word, pc: Word) 
             let addr = src1.wrapping_add(dec.imm);
             let val = match dec.funct3 {
                 0b000 => {  // LB
-                    let v = vaddr_read(&*cpu, addr, 1);
+                    let v = vaddr_read(cpu, addr, 1);
                     ((v as i8) as i32) as u32
                 }
                 0b001 => {  // LH
-                    let v = vaddr_read(&*cpu, addr, 2);
+                    let v = vaddr_read(cpu, addr, 2);
                     ((v as i16) as i32) as u32
                 }
-                0b010 => vaddr_read(&*cpu, addr, 4),  // LW
-                0b100 => vaddr_read(&*cpu, addr, 1),  // LBU
-                0b101 => vaddr_read(&*cpu, addr, 2),  // LHU
+                0b010 => vaddr_read(cpu, addr, 4),  // LW
+                0b100 => vaddr_read(cpu, addr, 1),  // LBU
+                0b101 => vaddr_read(cpu, addr, 2),  // LHU
                 _ => {
                     log::error!("Invalid load funct3: 0b{:03b}", dec.funct3);
                     0
@@ -115,9 +115,9 @@ pub fn decode_exec(cpu: &mut crate::cpu::state::CpuState, inst: Word, pc: Word) 
             let src2 = R!(cpu, dec.rs2);
             let addr = src1.wrapping_add(dec.imm);
             match dec.funct3 {
-                0b000 => vaddr_write(&*cpu, addr, 1, src2),  // SB
-                0b001 => vaddr_write(&*cpu, addr, 2, src2),  // SH
-                0b010 => vaddr_write(&*cpu, addr, 4, src2),  // SW
+                0b000 => vaddr_write(cpu, addr, 1, src2),  // SB
+                0b001 => vaddr_write(cpu, addr, 2, src2),  // SH
+                0b010 => vaddr_write(cpu, addr, 4, src2),  // SW
                 _ => log::error!("Invalid store funct3: 0b{:03b}", dec.funct3),
             }
         }
@@ -217,72 +217,72 @@ pub fn decode_exec(cpu: &mut crate::cpu::state::CpuState, inst: Word, pc: Word) 
             
             match (dec.funct7 >> 2, dec.funct3) {
                 (0b00010, 0b010) => {  // LR.W
-                    let val = vaddr_read(&*cpu, addr, 4);
+                    let val = vaddr_read(cpu, addr, 4);
                     W!(cpu, dec.rd, val);
                     // TODO: Set reservation
                 }
                 (0b00011, 0b010) => {  // SC.W
                     let src2 = R!(cpu, dec.rs2);
-                    vaddr_write(&*cpu, addr, 4, src2);
+                    vaddr_write(cpu, addr, 4, src2);
                     W!(cpu, dec.rd, 0);  // Always succeed for now
                     // TODO: Check reservation
                 }
                 (0b00001, 0b010) => {  // AMOSWAP.W
-                    let t = vaddr_read(&*cpu, addr, 4);
+                    let t = vaddr_read(cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
-                    vaddr_write(&*cpu, addr, 4, src2);
+                    vaddr_write(cpu, addr, 4, src2);
                     W!(cpu, dec.rd, t);
                 }
                 (0b00000, 0b010) => {  // AMOADD.W
-                    let t = vaddr_read(&*cpu, addr, 4);
+                    let t = vaddr_read(cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
-                    vaddr_write(&*cpu, addr, 4, t.wrapping_add(src2));
+                    vaddr_write(cpu, addr, 4, t.wrapping_add(src2));
                     W!(cpu, dec.rd, t);
                 }
                 (0b00100, 0b010) => {  // AMOXOR.W
-                    let t = vaddr_read(&*cpu, addr, 4);
+                    let t = vaddr_read(cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
-                    vaddr_write(&*cpu, addr, 4, t ^ src2);
+                    vaddr_write(cpu, addr, 4, t ^ src2);
                     W!(cpu, dec.rd, t);
                 }
                 (0b01100, 0b010) => {  // AMOAND.W
-                    let t = vaddr_read(&*cpu, addr, 4);
+                    let t = vaddr_read(cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
-                    vaddr_write(&*cpu, addr, 4, t & src2);
+                    vaddr_write(cpu, addr, 4, t & src2);
                     W!(cpu, dec.rd, t);
                 }
                 (0b01000, 0b010) => {  // AMOOR.W
-                    let t = vaddr_read(&*cpu, addr, 4);
+                    let t = vaddr_read(cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
-                    vaddr_write(&*cpu, addr, 4, t | src2);
+                    vaddr_write(cpu, addr, 4, t | src2);
                     W!(cpu, dec.rd, t);
                 }
                 (0b10000, 0b010) => {  // AMOMIN.W
-                    let t = vaddr_read(&*cpu, addr, 4);
+                    let t = vaddr_read(cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
                     let min = if (t as SWord) < (src2 as SWord) { t } else { src2 };
-                    vaddr_write(&*cpu, addr, 4, min);
+                    vaddr_write(cpu, addr, 4, min);
                     W!(cpu, dec.rd, t);
                 }
                 (0b10100, 0b010) => {  // AMOMAX.W
-                    let t = vaddr_read(&*cpu, addr, 4);
+                    let t = vaddr_read(cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
                     let max = if (t as SWord) > (src2 as SWord) { t } else { src2 };
-                    vaddr_write(&*cpu, addr, 4, max);
+                    vaddr_write(cpu, addr, 4, max);
                     W!(cpu, dec.rd, t);
                 }
                 (0b11000, 0b010) => {  // AMOMINU.W
-                    let t = vaddr_read(&*cpu, addr, 4);
+                    let t = vaddr_read(cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
                     let min = if t < src2 { t } else { src2 };
-                    vaddr_write(&*cpu, addr, 4, min);
+                    vaddr_write(cpu, addr, 4, min);
                     W!(cpu, dec.rd, t);
                 }
                 (0b11100, 0b010) => {  // AMOMAXU.W
-                    let t = vaddr_read(&*cpu, addr, 4);
+                    let t = vaddr_read(cpu, addr, 4);
                     let src2 = R!(cpu, dec.rs2);
                     let max = if t > src2 { t } else { src2 };
-                    vaddr_write(&*cpu, addr, 4, max);
+                    vaddr_write(cpu, addr, 4, max);
                     W!(cpu, dec.rd, t);
                 }
                 _ => {
@@ -295,16 +295,23 @@ pub fn decode_exec(cpu: &mut crate::cpu::state::CpuState, inst: Word, pc: Word) 
         0b0001111 => {
             // FENCE/FENCE.I - treated as NOP
         }
-        // FENCE.VMA / SFENCE.VMA
+         // FENCE.VMA / SFENCE.VMA
          0b0001001 => {
-             // SFENCE.VMA - TLB flush, treated as NOP for now (flushing not strictly needed if we don't cache translations persistently across flushes properly yet, or if we just want to proceed)
-             // opcode 1110011 (system), funct3 000, funct7 0001001
+             // SFENCE.VMA - TLB flush
+             // For now, flush entire TLB
+             for entry in cpu.tlb.iter_mut() {
+                 entry.valid = false;
+             }
+             // crate::Log!("SFENCE.VMA: TLB Flushed at pc=0x{:08x}", pc);
          }
         // System instructions (0b1110011)
         0b1110011 => {
              // Special check for SFENCE.VMA which is System opcode but funct7=0001001
              if dec.funct7 == 0b0001001 {
                   // SFENCE.VMA
+                  for entry in cpu.tlb.iter_mut() {
+                       entry.valid = false;
+                  }
                   // return; // Don't return, let PC update!
              }
              
