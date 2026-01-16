@@ -1,27 +1,27 @@
 # REMU - Rust RISC-V Emulator
 
-基于南京大学的[NEMU](https://github.com/NJU-ProjectN/NEMU)项目，使用Rust重新实现。可以成功boot RT-Thread/Linux。目前Boot Linux速度~70 MIPS.
+[中文版](README_CN.md)
+
+Re-implementation of the [NEMU](https://github.com/NJU-ProjectN/NEMU) project from Nanjing University (ICS course) using Rust. It can successfully boot RT-Thread/Linux. The current Linux boot speed is ~70 MIPS.
 
 ![BootLinux](pictures/linux_boot.png)
 
-
-
-## 开发环境
+## Development Environment
 
 - Mac Mini M4
 
-## 软件栈版本
+## Software Versions
 
-- opensbi 1.8.1
-- linux 5.15
+- OpenSBI 1.8.1
+- Linux 5.15
 
-## 支持的指令集架构
+## Supported ISA
 
 - RV32IMA_Zicsr_Zifencei
 
 ## Quick Start
 
-1. 安装依赖
+1. Install Dependencies
 
    macOS:
 
@@ -35,21 +35,21 @@
    sudo apt install cargo libsdl2-dev device-tree-compiler
    ```
 
-2. 构建项目
+2. Build Project
 
    ```bash
-   # 调试模式构建
+   # Debug build
    cargo build
 
-   # Release 模式构建
+   # Release build
    RUSTFLAGS="-C target-cpu=native" cargo build --release
    ```
 
-3. 运行 Linux
+3. Run Linux
 
-   使用预编译好的 OpenSBI 和 Linux 镜像 (需要自行准备或参考 linux-sw 构建)：
+   Use pre-compiled OpenSBI and Linux images (need to prepare yourself or refer to `linux-sw` for building):
 
    ```bash
-   # 运行 Linux Payload
+   # Run Linux Payload
    ./target/release/remu --image /path/to/fw_payload.bin
    ```
