@@ -12,8 +12,6 @@ static mut HOST_START_TIME: Option<Instant> = None;
 
 pub fn init_cpu() {
     Log!("Initializing CPU...");
-    
-    // Initialize CPU state (already done in state::new())
     let cpu = CPU.lock().unwrap();
     let pc = cpu.pc;
     drop(cpu);
@@ -39,40 +37,25 @@ pub fn cpu_exec(n: u64) {
     }
     
     execute(n);
-    
-    // Print statistics
     statistic();
 }
 
 fn execute(n: u64) {
-    // Lock CPU state once for the entire execution loop
     let mut cpu_guard = CPU.lock().unwrap();
     let cpu = &mut *cpu_guard;
 
     for i in 0..n {
-        // Check interrupts every 1024 instructions to throttle timer syscalls
+        // 目前每执行 1024 条指令检查一次中断
         exec_once(cpu, (i & 0x3ff) == 0);
         
         unsafe {
             GUEST_INST_COUNT += 1;
         }
-        // Check for external state change (e.g. from SDL or CTRL+C)
         if crate::utils::get_state() != RemuState::Running {
             break;
         }
 
-        // The following lines are added as part of the instruction,
-        // but `timer_start` is not defined in the current context.
-        // This might indicate a missing part of the change or an incomplete instruction.
-        // For now, it's included as is, assuming `timer_start` would be defined elsewhere.
-        // If `timer_start` is not defined, this code will cause a compilation error.
-        // if n > 0 && timer_start.elapsed().as_micros() as u64 > 500000 { // Check every 0.5s
-        //     let duration = timer_start.elapsed().as_micros() as u64;
-        // }
-        
         // Update devices
-        // Update devices (Throttle: Check every 65536 instructions)
-        // ~333Hz at 20MIPS, sufficient for 60Hz VGA/Serial
         if crate::generated::config::DEVICE && (i & 0xffff) == 0 {
             crate::device::device_update();
         }
@@ -81,8 +64,6 @@ fn execute(n: u64) {
 
 fn exec_once(cpu: &mut CpuState, check_intr: bool) {
     let pc = cpu.pc;
-    
-    // Check for interrupts
     if check_intr {
         let intr = crate::isa::riscv32::system::intr::isa_query_intr(cpu);
         if intr != 0 {
@@ -91,8 +72,6 @@ fn exec_once(cpu: &mut CpuState, check_intr: bool) {
              return;
         }
     }
-
-    // Execute one instruction
     riscv32::isa_exec_once(cpu, pc);
 }
 
@@ -105,8 +84,6 @@ pub fn statistic() {
     let halt_pc = state_guard.halt_pc;
     let halt_ret = state_guard.halt_ret;
     drop(state_guard);
-    
-    // Determine trap message
     let trap_msg = if state == RemuState::Abort {
         format!("{}ABORT{}", ANSI_FG_RED, ANSI_NONE)
     } else {
@@ -117,14 +94,12 @@ pub fn statistic() {
         }
     };
     
-    // Print trap message with Log! macro format
     Log!("{}Remu: {} at pc = 0x{:08x}{}",
         ANSI_FG_BLUE,
         trap_msg,
         halt_pc,
         ANSI_NONE);
     
-    // Calculate statistics
     let guest_inst = unsafe { GUEST_INST_COUNT };
     let elapsed = unsafe {
         HOST_START_TIME.map(|start| start.elapsed()).unwrap_or_default()
@@ -136,7 +111,6 @@ pub fn statistic() {
         0.0
     };
     
-    // Format with thousand separators
     let time_str = format!("{}", host_time_us);
     let time_formatted = time_str.as_bytes().rchunks(3)
         .rev()
@@ -151,12 +125,10 @@ pub fn statistic() {
     Log!("{}simulation frequency = {:.0} inst/s{}",
         ANSI_FG_BLUE, freq, ANSI_NONE);
     
-    // Show traces
     if crate::generated::config::TRACE {
         crate::utils::print_trace_summary();
     }
     
-    // Set bad exit status if needed
     if halt_ret != 0 && state != RemuState::Abort {
         crate::monitor::set_exit_status_bad();
     }
