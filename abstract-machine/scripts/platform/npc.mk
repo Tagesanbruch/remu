@@ -1,4 +1,4 @@
-NPC_HOME ?= $(AM_HOME)/../npc
+NPC_HOME ?= $(REMU_AM_HOME)/../npc
 AM_SRCS := riscv/npc/start.S \
            riscv/npc/trm.c \
            riscv/npc/ioe.c \
@@ -10,14 +10,14 @@ AM_SRCS := riscv/npc/start.S \
            platform/dummy/mpe.c
 
 CFLAGS    += -fdata-sections -ffunction-sections
-LDFLAGS   += -T $(AM_HOME)/scripts/linker.ld \
+LDFLAGS   += -T $(REMU_AM_HOME)/scripts/linker.ld \
 						 --defsym=_pmem_start=0x80000000 --defsym=_entry_offset=0x0
 LDFLAGS   += --gc-sections -e _start
 CFLAGS += -DMAINARGS=\"$(mainargs)\"
-CFLAGS += -I$(AM_HOME)/am/src/platform/npc/include
+CFLAGS += -I$(REMU_AM_HOME)/am/src/platform/npc/include
 # NPCFLAGS += -l $(shell dirname $(IMAGE).elf)/npc-log.txt
 # LOG = $(shell dirname $(IMAGE).elf)/npc-log.txt
-.PHONY: $(AM_HOME)/am/src/riscv/npc/trm.c
+.PHONY: $(REMU_AM_HOME)/am/src/riscv/npc/trm.c
 
 image: $(IMAGE).elf
 	@$(OBJDUMP) -d $(IMAGE).elf > $(IMAGE).txt

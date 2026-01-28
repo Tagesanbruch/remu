@@ -13,13 +13,13 @@
 # See the Mulan PSL v2 for more details.
 #**************************************************************************************/
 
--include $(REMU_HOME)/../Makefile
+-include $(REMU_NN_HOME)/../Makefile
 
 # NOTE: build.mk is included by Makefile directly, so we don't include it here
 # to avoid duplicate targets warning.
-# include $(REMU_HOME)/scripts/build.mk
+# include $(REMU_NN_HOME)/scripts/build.mk
 
-include $(REMU_HOME)/tools/difftest.mk
+include $(REMU_NN_HOME)/tools/difftest.mk
 
 # Some convenient rules
 
@@ -48,7 +48,7 @@ endif
 
 REMU_EXEC := $(BINARY) $(ARGS) $(IMG)
 
-run-env: $(BINARY) $(DIFF_REF_SO) $(REMU_HOME)/src/generated/config.rs
+run-env: $(BINARY) $(DIFF_REF_SO) $(REMU_NN_HOME)/src/generated/config.rs
 
 
 run: run-env

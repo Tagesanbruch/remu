@@ -128,6 +128,11 @@ pub fn statistic() {
     if crate::generated::config::TRACE {
         crate::utils::print_trace_summary();
     }
+
+    if crate::generated::config::DEVICE {
+        let npu_stats = crate::device::npu::dump_npu_profile();
+        println!("NPU Profile: {}", npu_stats);
+    }
     
     if halt_ret != 0 && state != RemuState::Abort {
         crate::monitor::set_exit_status_bad();

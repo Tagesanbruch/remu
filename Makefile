@@ -2,26 +2,26 @@
 # REMU Makefile - Rust-based RISC-V Emulator
 #**************************************************************************************/
 
-REMU_HOME ?= $(shell pwd)
+REMU_NN_HOME ?= $(shell pwd)
 
 # Build configuration
-BUILD_DIR := $(REMU_HOME)/build
+BUILD_DIR := $(REMU_NN_HOME)/build
 BINARY := $(BUILD_DIR)/remu
 
 # Include config rules (provides menuconfig, defines CONFIG_*)
-include $(REMU_HOME)/scripts/config.mk
+include $(REMU_NN_HOME)/scripts/config.mk
 
 # Include build script and native rules
-include $(REMU_HOME)/scripts/build.mk
-include $(REMU_HOME)/scripts/native.mk
+include $(REMU_NN_HOME)/scripts/build.mk
+include $(REMU_NN_HOME)/scripts/native.mk
 
 # Autoconf: Regenerate config.rs when .config changes
-$(REMU_HOME)/src/generated/config.rs: $(REMU_HOME)/.config
+$(REMU_NN_HOME)/src/generated/config.rs: $(REMU_NN_HOME)/.config
 	@echo "Regenerating config.rs..."
-	@python3 $(REMU_HOME)/scripts/gen_config.py
+	@python3 $(REMU_NN_HOME)/scripts/gen_config.py
 
 # Ensure build depends on config.rs
-$(BINARY): $(REMU_HOME)/src/generated/config.rs
+$(BINARY): $(REMU_NN_HOME)/src/generated/config.rs
 
 # Local convenience targets
 .PHONY: app clean count

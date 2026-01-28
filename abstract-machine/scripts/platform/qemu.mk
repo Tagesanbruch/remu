@@ -9,7 +9,7 @@ QEMU_FLAGS += -serial mon:stdio \
 build-arg: image
 	@( echo -n $(mainargs); ) | dd if=/dev/stdin of=$(IMAGE) bs=512 count=2 seek=1 conv=notrunc status=none
 
-BOOT_HOME := $(AM_HOME)/am/src/x86/qemu/boot
+BOOT_HOME := $(REMU_AM_HOME)/am/src/x86/qemu/boot
 
 image: $(IMAGE).elf
 	@$(MAKE) -s -C $(BOOT_HOME)

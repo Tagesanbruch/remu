@@ -1,5 +1,5 @@
-include $(AM_HOME)/scripts/isa/riscv.mk
-include $(AM_HOME)/scripts/platform/nemu.mk
+include $(REMU_AM_HOME)/scripts/isa/riscv.mk
+include $(REMU_AM_HOME)/scripts/platform/nemu.mk
 CFLAGS  += -DISA_H=\"riscv/riscv.h\"
 NEMU_ARCH_FLAGS := -march=rv32im -mabi=ilp32
 # LDFLAGS       += -melf32lriscv                     # overwrite

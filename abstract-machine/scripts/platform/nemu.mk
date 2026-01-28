@@ -8,14 +8,14 @@ AM_SRCS := platform/nemu/trm.c \
            platform/nemu/mpe.c
 
 CFLAGS    += -fdata-sections -ffunction-sections
-LDFLAGS   += -T $(AM_HOME)/scripts/linker.ld \
+LDFLAGS   += -T $(REMU_AM_HOME)/scripts/linker.ld \
              --defsym=_pmem_start=0x80000000 --defsym=_entry_offset=0x0
 LDFLAGS   += --gc-sections -e _start
 NEMUFLAGS += -l $(shell dirname $(IMAGE).elf)/nemu-log.txt
 
 CFLAGS += -DMAINARGS=\"$(mainargs)\"
-CFLAGS += -I$(AM_HOME)/am/src/platform/nemu/include
-.PHONY: $(AM_HOME)/am/src/platform/nemu/trm.c
+CFLAGS += -I$(REMU_AM_HOME)/am/src/platform/nemu/include
+.PHONY: $(REMU_AM_HOME)/am/src/platform/nemu/trm.c
 
 image: $(IMAGE).elf
 	@$(OBJDUMP) -d $(IMAGE).elf > $(IMAGE).txt

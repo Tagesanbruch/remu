@@ -1,5 +1,5 @@
-include $(AM_HOME)/scripts/isa/mips32.mk
-include $(AM_HOME)/scripts/platform/nemu.mk
+include $(REMU_AM_HOME)/scripts/isa/mips32.mk
+include $(REMU_AM_HOME)/scripts/platform/nemu.mk
 CFLAGS  += -DISA_H=\"mips/mips32.h\"
 
 AM_SRCS += mips/nemu/start.S \

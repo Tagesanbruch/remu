@@ -10,6 +10,8 @@ pub mod clint;
 pub mod plic;
 pub mod intr;
 pub mod sdl;
+pub mod npu;
+pub mod flash;
 
 pub fn init_device() {
     crate::Log!("Initializing devices...");
@@ -30,6 +32,10 @@ pub fn init_device() {
     // sdl::init_sdl(); // Called by init_vga now
     audio::init_audio();
     disk::init_disk();
+    
+    // AI/NPU subsystem
+    npu::init_npu();
+    flash::init_flash();
 }
 
 pub fn device_update() {

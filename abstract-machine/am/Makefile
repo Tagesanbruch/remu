@@ -1,5 +1,5 @@
 NAME     := am
 SRCS      = $(addprefix src/, $(AM_SRCS))
-INC_PATH += $(AM_HOME)/am/src
+INC_PATH += $(REMU_AM_HOME)/am/src
 
-include $(AM_HOME)/Makefile
+include $(REMU_AM_HOME)/Makefile

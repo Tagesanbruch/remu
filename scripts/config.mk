@@ -24,9 +24,9 @@ endif
 -include .config
 
 Q            := @
-KCONFIG_PATH := $(REMU_HOME)/tools/kconfig
-FIXDEP_PATH  := $(REMU_HOME)/tools/fixdep
-Kconfig      := $(REMU_HOME)/Kconfig
+KCONFIG_PATH := $(REMU_NN_HOME)/tools/kconfig
+FIXDEP_PATH  := $(REMU_NN_HOME)/tools/fixdep
+Kconfig      := $(REMU_NN_HOME)/Kconfig
 rm-distclean += include/generated include/config .config .config.old
 silent := -s
 
