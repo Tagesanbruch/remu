@@ -106,22 +106,81 @@ void npu_relu(uint32_t len) {
     npu_wait();
 }
 
+/**
+ * Matrix multiplication with tiling support: C[m,n] = A[m,k] @ B[k,n]
+ * 
+ * When k*n > SRAM_SIZE (weight too large), tile along n dimension.
+ */
+static int32_t _matmul_temp_out[SRAM_SIZE / sizeof(int32_t)];
+
 void npu_matmul(int8_t *a, int8_t *b, int32_t *c, int m, int n, int k) {
+    // Check if tiling needed for weight matrix
+    int max_n_by_weight = SRAM_SIZE / k;
+    int max_n_by_output = SRAM_SIZE / (m * sizeof(int32_t));
+    int n_tile = max_n_by_weight < max_n_by_output ? max_n_by_weight : max_n_by_output;
+    if (n_tile > n) n_tile = n;
+    if (n_tile < 1) n_tile = 1;
+    
+    // If no tiling needed
+    if (n_tile >= n && m * k <= (int)SRAM_SIZE) {
+        npu_dma_load_feature(a, m * k);
+        npu_dma_load_weight(b, k * n);
+        npu_gemm(m, n, k);
+        npu_dma_store_output(c, m * n * sizeof(int32_t));
+        return;
+    }
+    
+    // Load feature once (A[m,k])
     npu_dma_load_feature(a, m * k);
-    npu_dma_load_weight(b, k * n);
-    npu_gemm(m, n, k);
-    npu_dma_store_output(c, m * n * sizeof(int32_t));
+    
+    // Process output columns in tiles
+    for (int n_start = 0; n_start < n; n_start += n_tile) {
+        int n_end = n_start + n_tile;
+        if (n_end > n) n_end = n;
+        int n_cur = n_end - n_start;
+        
+        // Extract weight tile: B[:, n_start:n_end] from B[k,n] layout
+        // B is stored as [k,n] row-major, so column tile is strided
+        static int8_t weight_tile[SRAM_SIZE];
+        for (int ki = 0; ki < k; ki++) {
+            for (int ni = 0; ni < n_cur; ni++) {
+                weight_tile[ki * n_cur + ni] = b[ki * n + (n_start + ni)];
+            }
+        }
+        npu_dma_load_weight(weight_tile, k * n_cur);
+        
+        // GEMM: [m, k] * [k, n_cur] -> [m, n_cur]
+        npu_gemm(m, n_cur, k);
+        
+        // Store to temp and copy to output
+        npu_dma_store_output(_matmul_temp_out, m * n_cur * sizeof(int32_t));
+        
+        // Copy to correct columns of output C[m, n]
+        for (int mi = 0; mi < m; mi++) {
+            for (int ni = 0; ni < n_cur; ni++) {
+                c[mi * n + (n_start + ni)] = _matmul_temp_out[mi * n_cur + ni];
+            }
+        }
+    }
 }
 
 /**
- * Simplified Conv2D using im2col + GEMM
+ * Simplified Conv2D using im2col + GEMM with tiling support
  * 
  * Converts convolution to matrix multiplication:
  *   im2col(input) -> feature matrix [out_h*out_w, in_c*kh*kw]
  *   weight -> [out_c, in_c*kh*kw]
  *   GEMM output -> [out_h*out_w, out_c]
  *   Final output -> [out_c, out_h, out_w] (transposed for standard layout)
+ * 
+ * Tiling: When M*K > SRAM_SIZE, process spatial positions in tiles.
  */
+
+// Static buffers to avoid stack overflow
+static int8_t _conv2d_im2col_buf[SRAM_SIZE];
+static int8_t _conv2d_weight_t[SRAM_SIZE];
+static int32_t _conv2d_gemm_out[SRAM_SIZE / sizeof(int32_t)];
+
 void npu_conv2d(int8_t *input, int8_t *weight, int32_t *output,
                 int batch, int in_c, int in_h, int in_w,
                 int out_c, int kh, int kw, int pad, int stride,
@@ -130,22 +189,44 @@ void npu_conv2d(int8_t *input, int8_t *weight, int32_t *output,
     int out_h = (in_h + 2 * pad - kh) / stride + 1;
     int out_w = (in_w + 2 * pad - kw) / stride + 1;
     
-    int M = out_h * out_w;  // spatial
-    int N = out_c;          // filters
-    int K = in_c * kh * kw; // kernel volume
+    int M_total = out_h * out_w;  // total spatial positions
+    int N = out_c;                // filters
+    int K = in_c * kh * kw;       // kernel volume
     
-    // Temp buffer for im2col (on stack - be careful with size!)
-    int8_t im2col_buf[SRAM_SIZE];
-    int32_t gemm_out[SRAM_SIZE / sizeof(int32_t)];  // Temp for GEMM output
+    // Calculate tile size based on SRAM constraints
+    // Need: M_tile * K <= SRAM_SIZE (feature), K * N <= SRAM_SIZE (weight), M_tile * N * 4 <= SRAM_SIZE (output)
+    int max_m_by_feature = SRAM_SIZE / K;
+    int max_m_by_output = SRAM_SIZE / (N * sizeof(int32_t));
+    int M_tile = max_m_by_feature < max_m_by_output ? max_m_by_feature : max_m_by_output;
+    if (M_tile > M_total) M_tile = M_total;
+    if (M_tile < 1) M_tile = 1;  // At least 1
     
     for (int b = 0; b < batch; b++) {
         int8_t *in_batch = input + b * (in_c * in_h * in_w);
         int32_t *out_batch = output + b * (out_c * out_h * out_w);
         
-        // Im2col: convert to [M, K] matrix
-        for (int oh = 0; oh < out_h; oh++) {
-            for (int ow = 0; ow < out_w; ow++) {
-                int m = oh * out_w + ow;
+        // Transpose weight once per batch: [N, K] -> [K, N]
+        for (int ni = 0; ni < N; ni++) {
+            for (int ki = 0; ki < K; ki++) {
+                if (ki * N + ni < (int)SRAM_SIZE) {
+                    _conv2d_weight_t[ki * N + ni] = weight[ni * K + ki];
+                }
+            }
+        }
+        npu_dma_load_weight(_conv2d_weight_t, K * N);
+        
+        // Process spatial positions in tiles
+        for (int m_start = 0; m_start < M_total; m_start += M_tile) {
+            int m_end = m_start + M_tile;
+            if (m_end > M_total) m_end = M_total;
+            int M_cur = m_end - m_start;
+            
+            // Im2col for current tile: convert spatial positions [m_start, m_end) to [M_cur, K]
+            for (int m_idx = 0; m_idx < M_cur; m_idx++) {
+                int m = m_start + m_idx;
+                int oh = m / out_w;
+                int ow = m % out_w;
+                
                 for (int ic = 0; ic < in_c; ic++) {
                     for (int ky = 0; ky < kh; ky++) {
                         for (int kx = 0; kx < kw; kx++) {
@@ -158,46 +239,34 @@ void npu_conv2d(int8_t *input, int8_t *weight, int32_t *output,
                                 val = in_batch[ic * in_h * in_w + ih * in_w + iw];
                             }
                             
-                            if (m * K + k_idx < (int)SRAM_SIZE) {
-                                im2col_buf[m * K + k_idx] = val;
-                            }
+                            _conv2d_im2col_buf[m_idx * K + k_idx] = val;
                         }
                     }
                 }
             }
-        }
-        
-        // Load im2col result
-        npu_dma_load_feature(im2col_buf, M * K);
-        
-        // Transpose weight for GEMM: [N, K] -> [K, N]
-        int8_t weight_t[SRAM_SIZE];
-        for (int ni = 0; ni < N; ni++) {
-            for (int ki = 0; ki < K; ki++) {
-                if (ki * N + ni < (int)SRAM_SIZE) {
-                    weight_t[ki * N + ni] = weight[ni * K + ki];
-                }
+            
+            // Load im2col tile
+            npu_dma_load_feature(_conv2d_im2col_buf, M_cur * K);
+            
+            // GEMM: [M_cur, K] * [K, N] -> [M_cur, N]
+            npu_gemm(M_cur, N, K);
+            
+            // Apply activation if requested
+            if (act_type == ACT_RELU) {
+                npu_relu(M_cur * N);
             }
-        }
-        npu_dma_load_weight(weight_t, K * N);
-        
-        // GEMM: [M, K] * [K, N] -> [M, N] = [out_h*out_w, out_c]
-        npu_gemm(M, N, K);
-        
-        // Apply activation if requested
-        if (act_type == ACT_RELU) {
-            npu_relu(M * N);
-        }
-        
-        // Store to temp buffer first
-        npu_dma_store_output(gemm_out, M * N * sizeof(int32_t));
-        
-        // Transpose output: [M, N] = [out_h*out_w, out_c] -> [out_c, out_h, out_w]
-        for (int c = 0; c < out_c; c++) {
-            for (int h = 0; h < out_h; h++) {
-                for (int w = 0; w < out_w; w++) {
-                    int m = h * out_w + w;
-                    out_batch[c * out_h * out_w + h * out_w + w] = gemm_out[m * N + c];
+            
+            // Store tile result
+            npu_dma_store_output(_conv2d_gemm_out, M_cur * N * sizeof(int32_t));
+            
+            // Transpose output tile: [M_cur, N] -> write to [out_c, out_h, out_w]
+            for (int m_idx = 0; m_idx < M_cur; m_idx++) {
+                int m = m_start + m_idx;
+                int oh = m / out_w;
+                int ow = m % out_w;
+                
+                for (int c = 0; c < N; c++) {
+                    out_batch[c * out_h * out_w + oh * out_w + ow] = _conv2d_gemm_out[m_idx * N + c];
                 }
             }
         }
