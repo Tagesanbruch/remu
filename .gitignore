@@ -37,3 +37,4 @@ autoconf.h
 
 # Temporary files
 .rustnemu_deps.txt
+useless
