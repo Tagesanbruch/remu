@@ -6,7 +6,7 @@ use crate::common::{Word, SWord, RemuState};
 // inst.rs doesn't seem to use them other than for those calls.
 // Let's keep them if unsure, or remove. The compiler warned about unused imports before.
 use crate::memory::vaddr::{vaddr_read, vaddr_write};
-use crate::utils::set_state;
+use crate::utils::{set_state, set_halt};
 
 macro_rules! R {
     ($cpu:expr, $idx:expr) => {
@@ -322,9 +322,18 @@ pub fn decode_exec(cpu: &mut crate::cpu::state::CpuState, inst: Word, pc: Word) 
                     return;
                 }
                  (0b0000000, 0b00001, 0b000) => {  // EBREAK
-                     // EBREAK cause = 3
-                     let new_pc = super::system::intr::isa_raise_intr(cpu, 3, pc);
-                     cpu.pc = new_pc;
+                     if crate::config::is_ebreak_halt() {
+                         // NEMU/REMU compatibility: use ebreak as halt signal
+                         // The return code is in a0 (x10)
+                         let ret_code = cpu.gpr[10] as i32;
+                         crate::Log!("EBREAK: halt with code {} at PC=0x{:08x}", ret_code, pc);
+                         set_halt(pc, ret_code);
+                         set_state(RemuState::End);
+                     } else {
+                         // Standard behavior: raise breakpoint exception (cause = 3)
+                         let new_pc = super::system::intr::isa_raise_intr(cpu, 3, pc);
+                         cpu.pc = new_pc;
+                     }
                      return;
                 }
                 (0b0011000, 0b00010, 0b000) => { // MRET

@@ -1,7 +1,7 @@
 //! Flash Device Simulation for Model Storage
 //!
 //! Memory Map (Base: 0x3000_0000):
-//!   0x0000_0000 - 0x00FF_FFFF: Flash Storage (16MB)
+//!   0x0000_0000 - 0x0FFF_FFFF: Flash Storage (256MB)
 //!
 //! This device simulates a SPI Flash or similar non-volatile storage
 //! for storing AI model weights and other large data.
@@ -19,7 +19,7 @@ use std::path::Path;
 use lazy_static::lazy_static;
 
 pub const FLASH_BASE: u32 = 0x30000000;
-pub const FLASH_SIZE: usize = 16 * 1024 * 1024; // 16MB
+pub const FLASH_SIZE: usize = 256 * 1024 * 1024; // 256MB for large models
 
 struct FlashState {
     data: Vec<u8>,

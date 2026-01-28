@@ -35,6 +35,9 @@ fn main() {
     
     Log!("REMU starting...");
     
+    // Set runtime flags
+    config::set_ebreak_halt(config.ebreak_halt);
+    
     // Initialize monitor (memory, devices, ISA)
     monitor::init_monitor(&config);
 

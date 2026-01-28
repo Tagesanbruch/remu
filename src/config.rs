@@ -31,6 +31,14 @@ pub struct Config {
     #[arg(long = "elf-offset", value_name = "OFFSET", default_value = "0")]
     pub elf_offset: String,
 
+    /// Treat ebreak as halt signal (for AM/NEMU compatibility)
+    #[arg(long = "ebreak-halt")]
+    pub ebreak_halt: bool,
+
+    /// Flash image file to load
+    #[arg(long = "flash", value_name = "FLASH_FILE")]
+    pub flash_file: Option<String>,
+
     /// Image file to load (positional argument)
     #[arg(value_name = "IMAGE")]
     pub image: Option<std::path::PathBuf>,
@@ -117,4 +125,17 @@ pub fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
 // Reset vector = MBASE + PC_RESET_OFFSET
 pub fn reset_vector(cfg: &RuntimeConfig) -> u32 {
     cfg.mbase + cfg.pc_reset_offset
+}
+
+// Global flags for runtime behavior
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static EBREAK_HALT: AtomicBool = AtomicBool::new(false);
+
+pub fn set_ebreak_halt(val: bool) {
+    EBREAK_HALT.store(val, Ordering::SeqCst);
+}
+
+pub fn is_ebreak_halt() -> bool {
+    EBREAK_HALT.load(Ordering::SeqCst)
 }

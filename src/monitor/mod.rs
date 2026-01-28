@@ -29,6 +29,17 @@ pub fn init_monitor(cfg: &Config) {
     // Initialize devices
     if crate::generated::config::DEVICE {
         crate::device::init_device();
+        
+        // Load flash image if specified
+        if let Some(ref flash_path) = cfg.flash_file {
+            match crate::device::flash::flash_load_file(flash_path) {
+                Ok(size) => Log!("Flash image loaded: {} bytes", size),
+                Err(e) => {
+                    eprintln!("Failed to load flash image: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
     }
     
     welcome();
