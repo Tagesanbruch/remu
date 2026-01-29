@@ -114,6 +114,8 @@ void *memcpy(void *out, const void *in, size_t n) {
   assert(n >= 0);
   char *pout = (char *)out;
   char *pin = (char *)in;
+  // print log info before assert
+  // printf("memcpy: pout=0x%u, pin=0x%u, n=%d\n", pout, pin, n);
   assert(!((pout > pin && pout < pin + n) || (pin > pout && pin < pout + n)));
   for (size_t i = 0; i < n; i++) {
     *(pout + i) = *(pin + i);

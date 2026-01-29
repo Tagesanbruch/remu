@@ -62,10 +62,26 @@ pub fn init_sdl() {
     let width = VGA_WIDTH;
     let height = VGA_HEIGHT;
     
-    let window = video_subsystem.window("RISC-V32 REMU", width, height)
-        .position_centered()
-        .build()
-        .unwrap();
+    let mut window_builder = video_subsystem.window("RISC-V32 REMU", width, height);
+    
+    // 尝试获取第二个显示器（索引为 1）的边界信息
+    // 索引 0 是主屏幕，索引 1 是副屏幕
+    match video_subsystem.display_bounds(1) {
+        Ok(bounds) => {
+            let x = bounds.x() + (bounds.width() as i32 - width as i32) / 2;
+            let y = bounds.y() + (bounds.height() as i32 - height as i32) / 2;
+            window_builder.position(x, y);
+            
+            println!("REMU: Window placed on Display 1 (Secondary) at ({}, {})", x, y);
+        },
+        Err(_) => {
+            window_builder.position_centered();
+            
+            println!("REMU: Secondary display not found, falling back to Primary.");
+        }
+    }
+
+    let window = window_builder.build().unwrap();
         
     let mut canvas = window.into_canvas().build().unwrap();
     canvas.clear();

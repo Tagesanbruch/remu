@@ -313,20 +313,20 @@ fn run_dma(st: &mut NpuState) {
                 st.feature_sram[i] =
                     crate::memory::paddr::paddr_read(st.dma_src + i as u32, 1) as u8;
             }
-            crate::Log!("NPU DMA: MM2S Feature src=0x{:08x} len={}", st.dma_src, len);
+            // crate::Log!("NPU DMA: MM2S Feature src=0x{:08x} len={}", st.dma_src, len);
         }
         DMA_DIR_MM2S_WEIGHT => {
             for i in 0..len.min(SRAM_SIZE) {
                 st.weight_sram[i] =
                     crate::memory::paddr::paddr_read(st.dma_src + i as u32, 1) as u8;
             }
-            crate::Log!("NPU DMA: MM2S Weight src=0x{:08x} len={}", st.dma_src, len);
+            // crate::Log!("NPU DMA: MM2S Weight src=0x{:08x} len={}", st.dma_src, len);
         }
         DMA_DIR_S2MM_OUTPUT => {
             for i in 0..len.min(SRAM_SIZE) {
                 crate::memory::paddr::paddr_write(st.dma_dst + i as u32, 1, st.output_sram[i] as u32);
             }
-            crate::Log!("NPU DMA: S2MM Output dst=0x{:08x} len={}", st.dma_dst, len);
+            // crate::Log!("NPU DMA: S2MM Output dst=0x{:08x} len={}", st.dma_dst, len);
         }
         _ => {
             st.status |= STATUS_ERROR;
@@ -353,7 +353,7 @@ fn run_gemm(st: &mut NpuState) {
     }
 
     st.status |= STATUS_BUSY;
-    crate::Log!("NPU GEMM: M={} N={} K={}", m, n, k);
+    // crate::Log!("NPU GEMM: M={} N={} K={}", m, n, k);
 
     // C[M,N] = A[M,K] * B[K,N]
     for r in 0..m {
@@ -415,7 +415,7 @@ fn run_activation(st: &mut NpuState) {
 
     st.perf_cycles += len as u64;
     st.perf_act_cnt += 1;
-    crate::Log!("NPU Activation: type={} len={}", st.act_type, len);
+    // crate::Log!("NPU Activation: type={} len={}", st.act_type, len);
     st.status &= !STATUS_BUSY;
     st.status |= STATUS_DONE;
 }
@@ -449,7 +449,7 @@ fn run_quantize(st: &mut NpuState) {
     }
 
     st.perf_cycles += (len as u64 + 3) / 4;
-    crate::Log!("NPU Quantize: scale={} zero={} len={}", scale, zero, len);
+    // crate::Log!("NPU Quantize: scale={} zero={} len={}", scale, zero, len);
     st.status &= !STATUS_BUSY;
     st.status |= STATUS_DONE;
 }

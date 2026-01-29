@@ -43,8 +43,39 @@ fn main() {
 
     // Register Ctrl+C handler
     ctrlc::set_handler(move || {
-        crate::cpu::execute::statistic();
-        crate::device::sdl::quit();
+        crate::utils::set_state(crate::common::RemuState::Abort);
+        println!("\nCtrl-C pressed. Aborting...");
+        crate::utils::itrace::show_itrace();
+        crate::utils::mtrace::show_mtrace();
+        crate::utils::ftrace::show_ftrace();
+
+        use crate::utils::state::REMU_STATE;
+
+        use crate::common::RemuState;
+    
+        let state_guard = REMU_STATE.lock().unwrap();
+        let state = state_guard.state;
+        let halt_pc = state_guard.halt_pc;
+        let halt_ret = state_guard.halt_ret;
+        drop(state_guard);
+
+        let trap_msg = if state == RemuState::Abort {
+        format!("{}ABORT{}", crate::utils::log::ANSI_FG_RED, crate::utils::log::ANSI_NONE)
+    } else {
+        if halt_ret == 0 {
+            format!("{}HIT GOOD TRAP{}", crate::utils::log::ANSI_FG_GREEN, crate::utils::log::ANSI_NONE)
+        } else {
+            format!("{}HIT BAD TRAP{}", crate::utils::log::ANSI_FG_RED, crate::utils::log::ANSI_NONE)
+        }
+    };
+    
+    Log!("{}Remu: {} at pc = 0x{:08x}{}",
+        crate::utils::log::ANSI_FG_BLUE,
+        trap_msg,
+        halt_pc,
+        crate::utils::log::ANSI_NONE);
+
+        // crate::cpu::execute::statistic(); // DEADLOCK WARNING: Holds NPU/CPU lock potentially
         std::process::exit(0);
     }).expect("Error setting Ctrl-C handler");
 

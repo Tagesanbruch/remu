@@ -1,8 +1,8 @@
 /**
  * NPU Hardware Abstraction Layer for REMU Platform
- * 
+ *
  * Low-level register definitions and DMA control.
- * 
+ *
  * Hardware Memory Map (Base: 0x2100_0000):
  *   0x0000 - 0x00FF: Control Registers
  *   0x1000 - 0x4FFF: Feature SRAM (16KB)
@@ -23,95 +23,95 @@ extern "C" {
 // NPU Base Address and Memory Map
 // ============================================================================
 
-#define NPU_BASE          0x21000000
+#define NPU_BASE 0x21000000
 
 // SRAM Offsets and Sizes
-#define SRAM_FEATURE      0x1000
-#define SRAM_WEIGHT       0x5000
-#define SRAM_OUTPUT       0x9000
-#define SRAM_SIZE         0x4000  // 16KB each
+#define SRAM_FEATURE 0x1000
+#define SRAM_WEIGHT 0x5000
+#define SRAM_OUTPUT 0x9000
+#define SRAM_SIZE 0x2000 // 8KB each
 
 // ============================================================================
 // Register Offsets
 // ============================================================================
 
 // Control Registers
-#define REG_CTRL          0x00
-#define REG_STATUS        0x04
+#define REG_CTRL 0x00
+#define REG_STATUS 0x04
 
 // DMA Registers
-#define REG_DMA_SRC       0x08
-#define REG_DMA_DST       0x0C
-#define REG_DMA_LEN       0x10
-#define REG_DMA_DIR       0x14
-#define REG_DMA_CTRL      0x18
+#define REG_DMA_SRC 0x08
+#define REG_DMA_DST 0x0C
+#define REG_DMA_LEN 0x10
+#define REG_DMA_DIR 0x14
+#define REG_DMA_CTRL 0x18
 
 // GEMM Registers
-#define REG_GEMM_M        0x20
-#define REG_GEMM_N        0x24
-#define REG_GEMM_K        0x28
-#define REG_GEMM_CTRL     0x2C
+#define REG_GEMM_M 0x20
+#define REG_GEMM_N 0x24
+#define REG_GEMM_K 0x28
+#define REG_GEMM_CTRL 0x2C
 
 // Pooling Registers
-#define REG_POOL_TYPE     0x30
-#define REG_POOL_IN_H     0x34
-#define REG_POOL_IN_W     0x38
-#define REG_POOL_KH       0x3C
-#define REG_POOL_KW       0x40
-#define REG_POOL_STRIDE   0x44
-#define REG_POOL_CTRL     0x48
+#define REG_POOL_TYPE 0x30
+#define REG_POOL_IN_H 0x34
+#define REG_POOL_IN_W 0x38
+#define REG_POOL_KH 0x3C
+#define REG_POOL_KW 0x40
+#define REG_POOL_STRIDE 0x44
+#define REG_POOL_CTRL 0x48
 
 // Activation Registers
-#define REG_ACT_TYPE      0x50
-#define REG_ACT_LEN       0x54
-#define REG_ACT_CTRL      0x58
-#define REG_ACT_PARAM0    0x5C    // For LeakyReLU alpha (Q16)
-#define REG_ACT_PARAM1    0x60    // For Clip min/max
+#define REG_ACT_TYPE 0x50
+#define REG_ACT_LEN 0x54
+#define REG_ACT_CTRL 0x58
+#define REG_ACT_PARAM0 0x5C // For LeakyReLU alpha (Q16)
+#define REG_ACT_PARAM1 0x60 // For Clip min/max
 
 // Performance Counters
-#define REG_PERF_CYCLES   0x80
-#define REG_PERF_BYTES    0x84
-#define REG_PERF_GEMM     0x8C
-#define REG_PERF_ACT      0x90
-#define REG_PERF_DMA      0x94
+#define REG_PERF_CYCLES 0x80
+#define REG_PERF_BYTES 0x84
+#define REG_PERF_GEMM 0x8C
+#define REG_PERF_ACT 0x90
+#define REG_PERF_DMA 0x94
 
 // ============================================================================
 // DMA Direction
 // ============================================================================
 
-#define DMA_MM2S_FEATURE  0
-#define DMA_MM2S_WEIGHT   1
-#define DMA_S2MM_OUTPUT   2
+#define DMA_MM2S_FEATURE 0
+#define DMA_MM2S_WEIGHT 1
+#define DMA_S2MM_OUTPUT 2
 
 // ============================================================================
 // Activation Types
 // ============================================================================
 
-#define ACT_NONE          0
-#define ACT_RELU          1
-#define ACT_RELU6         2
-#define ACT_LEAKY_RELU    3
-#define ACT_CLIP          4
+#define ACT_NONE 0
+#define ACT_RELU 1
+#define ACT_RELU6 2
+#define ACT_LEAKY_RELU 3
+#define ACT_CLIP 4
 
 // ============================================================================
 // Pooling Types
 // ============================================================================
 
-#define POOL_MAX          0
-#define POOL_AVG          1
-#define POOL_GLOBAL_AVG   2
+#define POOL_MAX 0
+#define POOL_AVG 1
+#define POOL_GLOBAL_AVG 2
 
 // ============================================================================
 // Status Bits
 // ============================================================================
 
-#define STATUS_BUSY       (1 << 0)
+#define STATUS_BUSY (1 << 0)
 
 // ============================================================================
 // Macros
 // ============================================================================
 
-#define npu_reg(off)      (NPU_BASE + (off))
+#define npu_reg(off) (NPU_BASE + (off))
 
 // ============================================================================
 // Low-level Hardware Functions
