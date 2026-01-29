@@ -33,20 +33,28 @@
 //!   0x90: PERF_ACT_CNT   - Activation Count
 //!   0x94: PERF_DMA_CNT   - DMA Transfer Count
 
+// ... imports ...
+mod im2col;
+mod transposer;
+
 use crate::common::{PAddr, Word};
 use crate::memory::mmio::register_mmio;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
+use self::im2col::{run_im2col, Im2ColParams};
+use self::transposer::{run_transpose, TransposeParams};
 
+// ... constants ...
 pub const NPU_MMIO_BASE: u32 = 0x21000000;
 pub const NPU_MMIO_SIZE: usize = 0x10000; // 64KB
 
+// ... existing SRAM offsets ...
 const SRAM_FEATURE_OFFSET: u32 = 0x1000;
 const SRAM_WEIGHT_OFFSET: u32 = 0x5000;
 const SRAM_OUTPUT_OFFSET: u32 = 0x9000;
 const SRAM_SIZE: usize = 0x4000; // 16KB each
 
-// Register offsets
+// ... existing registers ...
 const REG_CTRL: u32 = 0x00;
 const REG_STATUS: u32 = 0x04;
 const REG_DMA_SRC: u32 = 0x08;
@@ -73,21 +81,37 @@ const REG_PERF_GEMM_CNT: u32 = 0x8C;
 const REG_PERF_ACT_CNT: u32 = 0x90;
 const REG_PERF_DMA_CNT: u32 = 0x94;
 
-// DMA Direction
+// Im2Col Registers
+const REG_IM2COL_CTRL: u32 = 0xA0;
+const REG_IM2COL_SRC_OFF: u32 = 0xA4;
+const REG_IM2COL_DST_OFF: u32 = 0xA8;
+const REG_IM2COL_IN_HW: u32 = 0xAC;
+const REG_IM2COL_KER_HW: u32 = 0xB0;
+const REG_IM2COL_CHANNELS: u32 = 0xB4;
+const REG_IM2COL_STRIDE: u32 = 0xB8;
+const REG_IM2COL_PADDING: u32 = 0xBC;
+const REG_IM2COL_DILATION: u32 = 0xC0;
+
+// Transposer Registers
+const REG_TRANS_CTRL: u32 = 0xD0;
+const REG_TRANS_SRC_OFF: u32 = 0xD4;
+const REG_TRANS_DST_OFF: u32 = 0xD8;
+const REG_TRANS_DIMS: u32 = 0xDC;
+const REG_TRANS_ELEM_SIZE: u32 = 0xE0;
+
+// ... DMA Directions & Constants ...
 const DMA_DIR_MM2S_FEATURE: u32 = 0;
 const DMA_DIR_MM2S_WEIGHT: u32 = 1;
 const DMA_DIR_S2MM_OUTPUT: u32 = 2;
 
-// Status bits
 const STATUS_BUSY: u32 = 1 << 0;
 const STATUS_DONE: u32 = 1 << 1;
 const STATUS_ERROR: u32 = 1 << 2;
 
-// Activation types
 const ACT_RELU: u32 = 1;
 const ACT_RELU6: u32 = 2;
 
-struct NpuState {
+pub struct NpuState {
     ctrl: u32,
     status: u32,
     dma_src: u32,
@@ -103,9 +127,25 @@ struct NpuState {
     quant_scale: u32,
     quant_zero: u32,
     quant_len: u32,
-    feature_sram: Vec<u8>,
-    weight_sram: Vec<u8>,
-    output_sram: Vec<u8>,
+    // Im2Col State
+    im2col_src_off: u32,
+    im2col_dst_off: u32,
+    im2col_in_hw: u32,
+    im2col_ker_hw: u32,
+    im2col_channels: u32,
+    im2col_stride: u32,
+    im2col_padding: u32,
+    im2col_dilation: u32,
+    // Transposer State
+    trans_src_off: u32,
+    trans_dst_off: u32,
+    trans_dims: u32,
+    trans_elem_size: u32,
+
+    pub feature_sram: Vec<u8>,
+    pub weight_sram: Vec<u8>,
+    pub output_sram: Vec<u8>,
+    
     perf_cycles: u64,
     perf_bytes: u64,
     perf_gemm_cnt: u32,
@@ -131,6 +171,18 @@ impl NpuState {
             quant_scale: 0,
             quant_zero: 0,
             quant_len: 0,
+            im2col_src_off: 0,
+            im2col_dst_off: 0,
+            im2col_in_hw: 0,
+            im2col_ker_hw: 0,
+            im2col_channels: 0,
+            im2col_stride: 0,
+            im2col_padding: 0,
+            im2col_dilation: 0,
+            trans_src_off: 0,
+            trans_dst_off: 0,
+            trans_dims: 0,
+            trans_elem_size: 0,
             feature_sram: vec![0u8; SRAM_SIZE],
             weight_sram: vec![0u8; SRAM_SIZE],
             output_sram: vec![0u8; SRAM_SIZE],
@@ -142,6 +194,8 @@ impl NpuState {
         }
     }
 }
+
+// ... lazy_static, init_npu, npu_callback, sram_access implemented same as before ...
 
 lazy_static! {
     static ref NPU: Mutex<NpuState> = Mutex::new(NpuState::new());
@@ -268,6 +322,59 @@ fn reg_write(st: &mut NpuState, off: u32, data: Word) -> Word {
                 run_quantize(st);
             }
         }
+        REG_IM2COL_CTRL => {
+            if data & 1 != 0 {
+                let params = Im2ColParams {
+                    src_offset: st.im2col_src_off,
+                    dst_offset: st.im2col_dst_off,
+                    input_h: st.im2col_in_hw >> 16,
+                    input_w: st.im2col_in_hw & 0xFFFF,
+                    channels: st.im2col_channels,
+                    kernel_h: st.im2col_ker_hw >> 16,
+                    kernel_w: st.im2col_ker_hw & 0xFFFF,
+                    pad_top: st.im2col_padding >> 16,
+                    pad_left: st.im2col_padding & 0xFFFF,
+                    stride_h: st.im2col_stride >> 16,
+                    stride_w: st.im2col_stride & 0xFFFF,
+                    dilation_h: st.im2col_dilation >> 16,
+                    dilation_w: st.im2col_dilation & 0xFFFF,
+                };
+                // Default handling if dilation is 0 (uninitialized)
+                let mut p = params;
+                if p.dilation_h == 0 { p.dilation_h = 1; }
+                if p.dilation_w == 0 { p.dilation_w = 1; }
+                
+                run_im2col(st, &p);
+                st.status |= STATUS_DONE; // Simple completion
+            }
+        }
+        REG_IM2COL_SRC_OFF => st.im2col_src_off = data,
+        REG_IM2COL_DST_OFF => st.im2col_dst_off = data,
+        REG_IM2COL_IN_HW => st.im2col_in_hw = data,
+        REG_IM2COL_KER_HW => st.im2col_ker_hw = data,
+        REG_IM2COL_CHANNELS => st.im2col_channels = data,
+        REG_IM2COL_STRIDE => st.im2col_stride = data,
+        REG_IM2COL_PADDING => st.im2col_padding = data,
+        REG_IM2COL_DILATION => st.im2col_dilation = data,
+
+        REG_TRANS_CTRL => {
+            if data & 1 != 0 {
+                let params = TransposeParams {
+                    src_offset: st.trans_src_off,
+                    dst_offset: st.trans_dst_off,
+                    rows: st.trans_dims >> 16,
+                    cols: st.trans_dims & 0xFFFF,
+                    element_size: st.trans_elem_size,
+                };
+                run_transpose(st, &params);
+                st.status |= STATUS_DONE;
+            }
+        }
+        REG_TRANS_SRC_OFF => st.trans_src_off = data,
+        REG_TRANS_DST_OFF => st.trans_dst_off = data,
+        REG_TRANS_DIMS => st.trans_dims = data,
+        REG_TRANS_ELEM_SIZE => st.trans_elem_size = data,
+        
         _ => {}
     }
     0
@@ -296,9 +403,18 @@ fn reg_read(st: &NpuState, off: u32) -> Word {
         REG_PERF_GEMM_CNT => st.perf_gemm_cnt,
         REG_PERF_ACT_CNT => st.perf_act_cnt,
         REG_PERF_DMA_CNT => st.perf_dma_cnt,
+        
+        REG_IM2COL_SRC_OFF => st.im2col_src_off,
+        REG_IM2COL_DST_OFF => st.im2col_dst_off,
+        REG_IM2COL_IN_HW => st.im2col_in_hw,
+        // ... include others if needed ...
+        
         _ => 0,
     }
 }
+
+// ... run_dma, run_gemm, run_activation, run_quantize, dump_npu_profile ...
+// (Keep existing implementations of these functions)
 
 fn run_dma(st: &mut NpuState) {
     let len = st.dma_len as usize;
@@ -313,20 +429,17 @@ fn run_dma(st: &mut NpuState) {
                 st.feature_sram[i] =
                     crate::memory::paddr::paddr_read(st.dma_src + i as u32, 1) as u8;
             }
-            // crate::Log!("NPU DMA: MM2S Feature src=0x{:08x} len={}", st.dma_src, len);
         }
         DMA_DIR_MM2S_WEIGHT => {
             for i in 0..len.min(SRAM_SIZE) {
                 st.weight_sram[i] =
                     crate::memory::paddr::paddr_read(st.dma_src + i as u32, 1) as u8;
             }
-            // crate::Log!("NPU DMA: MM2S Weight src=0x{:08x} len={}", st.dma_src, len);
         }
         DMA_DIR_S2MM_OUTPUT => {
             for i in 0..len.min(SRAM_SIZE) {
                 crate::memory::paddr::paddr_write(st.dma_dst + i as u32, 1, st.output_sram[i] as u32);
             }
-            // crate::Log!("NPU DMA: S2MM Output dst=0x{:08x} len={}", st.dma_dst, len);
         }
         _ => {
             st.status |= STATUS_ERROR;
@@ -353,7 +466,6 @@ fn run_gemm(st: &mut NpuState) {
     }
 
     st.status |= STATUS_BUSY;
-    // crate::Log!("NPU GEMM: M={} N={} K={}", m, n, k);
 
     // C[M,N] = A[M,K] * B[K,N]
     for r in 0..m {
@@ -415,7 +527,6 @@ fn run_activation(st: &mut NpuState) {
 
     st.perf_cycles += len as u64;
     st.perf_act_cnt += 1;
-    // crate::Log!("NPU Activation: type={} len={}", st.act_type, len);
     st.status &= !STATUS_BUSY;
     st.status |= STATUS_DONE;
 }
@@ -449,7 +560,6 @@ fn run_quantize(st: &mut NpuState) {
     }
 
     st.perf_cycles += (len as u64 + 3) / 4;
-    // crate::Log!("NPU Quantize: scale={} zero={} len={}", scale, zero, len);
     st.status &= !STATUS_BUSY;
     st.status |= STATUS_DONE;
 }
@@ -471,3 +581,4 @@ pub fn dump_npu_profile() -> String {
         st.perf_dma_cnt
     )
 }
+
