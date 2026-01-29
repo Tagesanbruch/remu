@@ -1,0 +1,3 @@
+[submodule "macos-tvm"]
+	path = macos-tvm
+	url = https://github.com/apache/tvm

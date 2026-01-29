@@ -7,7 +7,11 @@ AM_SRCS := platform/remu/trm.c \
            platform/remu/ioe/disk.c \
            platform/remu/ioe/npu.c \
            platform/remu/ioe/flash.c \
-           platform/remu/mpe.c
+           platform/remu/mpe.c \
+           platform/remu/npu/npu_hw.c \
+           platform/remu/npu/npu_tiling.c \
+           platform/remu/npu/npu_utils.c \
+           platform/remu/npu/npu_kernels.c
 
 CFLAGS    += -fdata-sections -ffunction-sections
 LDFLAGS   += -T $(REMU_AM_HOME)/scripts/linker.ld \
