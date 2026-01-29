@@ -1,0 +1,23 @@
+# TVM Docker Compose Configuration
+
+services:
+  tvm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: remu-tvm:latest
+    container_name: remu-tvm
+    platform: linux/arm64
+    volumes:
+      # Mount the workspace
+      - ../:/workspace:rw
+      # Mount compiler output directory
+      - ../compiler/output:/workspace/compiler/output:rw
+      # Mount ONNX models
+      - ../onnx:/workspace/onnx:ro
+    working_dir: /workspace
+    environment:
+      - PYTHONPATH=/workspace/compiler
+    # Keep container running for interactive use
+    stdin_open: true
+    tty: true
