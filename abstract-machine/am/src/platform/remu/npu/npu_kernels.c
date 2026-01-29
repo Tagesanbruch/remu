@@ -294,8 +294,9 @@ void npu_global_avgpool2d(int8_t *input, int32_t *output,
                 sum += in_ch[i];
             }
             
-            // Return accumulated sum (caller may need to divide by spatial)
-            output[b * channels + c] = sum;
+            // Return average (rounded)
+            int32_t avg = (sum + spatial / 2) / spatial;
+            output[b * channels + c] = avg;
         }
     }
 }

@@ -454,7 +454,8 @@ class NPUCodeGenerator:
     
     def generate_inference_code(self, path: str, layers: List[LayerInfo], 
                                  input_shape: Tuple, onnx_weights: Dict,
-                                 conv_bias_map: Dict[str, str] = None):
+                                 conv_bias_map: Dict[str, str] = None,
+                                 dense_bias_map: Dict[str, str] = None):
         """Generate complete C inference code with NPU API calls.
         
         Args:
@@ -463,9 +464,12 @@ class NPUCodeGenerator:
             input_shape: Input tensor shape (N, C, H, W)
             onnx_weights: Dictionary of ONNX weights
             conv_bias_map: Mapping from conv weight name to bias name
+            dense_bias_map: Mapping from dense weight name to bias name
         """
         if conv_bias_map is None:
             conv_bias_map = {}
+        if dense_bias_map is None:
+            dense_bias_map = {}
             
         N, C, H, W = input_shape
         
@@ -482,12 +486,19 @@ class NPUCodeGenerator:
                     "shape": onnx_weights[layer.weight_name].shape,
                 }
         
-        # Calculate buffer sizes
-        max_channels = max(
-            layer.output_shape[1] if len(layer.output_shape) > 1 else 64
-            for layer in layers
-        ) if layers else 64
-        max_spatial = H * W
+        # Calculate actual maximum activation buffer size
+        # Find the maximum C * H * W across all layer outputs
+        max_act_size = 0
+        for layer in layers:
+            if len(layer.output_shape) >= 4:
+                act_size = layer.output_shape[1] * layer.output_shape[2] * layer.output_shape[3]
+                max_act_size = max(max_act_size, act_size)
+        
+        if max_act_size == 0:
+            max_act_size = C * H * W  # Fallback to input size
+        
+        # Add some margin
+        max_act_size = max(max_act_size, C * H * W)
         
         lines = [
             "/**",
@@ -512,10 +523,9 @@ class NPUCodeGenerator:
             f"#define INPUT_W {W}",
             f"#define INPUT_SIZE ({C} * {H} * {W})",
             "",
-            f"// Maximum buffer sizes for intermediate activations",
-            f"#define MAX_CHANNELS {max(max_channels, 1024)}",
-            f"#define MAX_SPATIAL {max_spatial}",
-            f"#define MAX_ACT_SIZE (MAX_CHANNELS * MAX_SPATIAL)",
+            f"// Maximum buffer size for intermediate activations",
+            f"// Calculated from max layer output: {max_act_size} elements",
+            f"#define MAX_ACT_SIZE {max_act_size}",
             "",
             "// Double-buffered activation memory",
             "static int8_t act_buf_0[MAX_ACT_SIZE] __attribute__((aligned(4)));",
@@ -685,6 +695,9 @@ class NPUCodeGenerator:
                 lines.extend([
                     f"    // ReLU activation",
                     f"    npu_relu_elementwise(cur_acc, cur_acc, {size}, 1);  // dtype=1 for int32",
+                    f"    // Requantize int32 -> int8 for next layer",
+                    f"    npu_requantize_shift(cur_acc, cur_output, {size}, 8);",
+                    f"    {{ int8_t* tmp = cur_input; cur_input = cur_output; cur_output = tmp; }}",
                     "",
                 ])
                 
@@ -696,25 +709,41 @@ class NPUCodeGenerator:
                 
                 if a_min == 0 and a_max == 6:
                     lines.extend([
-                        f"    // ReLU6 (Clip [0, 6])",
-                        f"    npu_relu6_elementwise(cur_acc, cur_acc, cur_c * cur_h * cur_w, 1);",
-                        "",
+                        f"    // ReLU6 (Clip [0, 6]) in int32 domain",
+                        f"    // Apply clip before requantize: max = 6 << 8 (shift=8)",
+                        f"    npu_clip_elementwise(cur_acc, cur_acc, cur_c * cur_h * cur_w, 1, 0, {6 << 8});",
                     ])
                 else:
                     lines.extend([
                         f"    // Clip [{a_min}, {a_max}]",
                         f"    npu_clip_elementwise(cur_acc, cur_acc, cur_c * cur_h * cur_w, 1, {int(a_min)}, {int(a_max)});",
-                        "",
                     ])
+                
+                # After activation, requantize back to int8 for next layer
+                lines.extend([
+                    f"    // Requantize int32 -> int8 for next layer",
+                    f"    npu_requantize_shift(cur_acc, cur_output, cur_c * cur_h * cur_w, 8);",
+                    f"    {{ int8_t* tmp = cur_input; cur_input = cur_output; cur_output = tmp; }}",
+                    "",
+                ])
                 
             elif "add" in op and "bias" not in op:
                 # Check if this is bias add (following expand_dims) - skip if we already fused it
                 is_bias_add = attrs.get("_is_bias_add", False)
                 
+                # Check if this add follows a dense layer (dense bias add pattern from TVM Gemm decomposition)
+                is_dense_bias_add = (i > 0 and "nn.dense" in layers[i-1].op_type)
+                
                 if is_bias_add:
                     # Bias add already handled in conv fusion - skip
                     lines.extend([
                         f"    // Bias add (skipped - already fused into conv)",
+                        "",
+                    ])
+                elif is_dense_bias_add:
+                    # Dense bias add - already fused into dense layer - skip
+                    lines.extend([
+                        f"    // Dense bias add (skipped - already fused into nn.dense)",
                         "",
                     ])
                 elif len(out_shape) >= 4 and out_shape[2] > 1 and out_shape[3] > 1:
@@ -740,6 +769,9 @@ class NPUCodeGenerator:
                     f"    npu_global_avgpool2d(cur_input, cur_acc, cur_n, cur_c, cur_h, cur_w);",
                     f"    cur_h = 1;",
                     f"    cur_w = 1;",
+                    f"    // Requantize for dense layer input",
+                    f"    npu_requantize_shift(cur_acc, cur_output, cur_c, 8);",
+                    f"    {{ int8_t* tmp = cur_input; cur_input = cur_output; cur_output = tmp; }}",
                     "",
                 ])
                 cur_shape[2] = 1
@@ -802,26 +834,46 @@ class NPUCodeGenerator:
                 weight_name = layer.weight_name
                 safe_weight = self._safe_name(weight_name) if weight_name else f"DENSE{i}"
                 
+                # Check if this dense has a bias
+                bias_name = dense_bias_map.get(weight_name) if weight_name else None
+                safe_bias = self._safe_name(bias_name) if bias_name else None
+                
+                # After global avgpool, data is [N, C, 1, 1], flatten to [N, C]
                 in_features = cur_shape[1] * cur_shape[2] * cur_shape[3]
                 
                 lines.extend([
                     f"    // Dense (Fully Connected): {in_features} -> {units}",
+                    f"    // Input from global avgpool is already flat [1, {in_features}]",
                     f"    npu_matmul(",
                     f"        cur_input,",
                     f"        (int8_t*)WEIGHT_{safe_weight},",
                     f"        cur_acc,",
-                    f"        cur_n, {units}, {in_features}",
+                    f"        1, {units}, {in_features}",
                     f"    );",
                     f"    cur_c = {units};",
                     f"    cur_h = 1;",
                     f"    cur_w = 1;",
-                    "",
                 ])
+                
+                # Add bias if present
+                if bias_name and safe_bias:
+                    lines.extend([
+                        f"    // Add bias (fused): {bias_name}",
+                        f"    {{",
+                        f"        const int32_t* bias = (const int32_t*)WEIGHT_{safe_bias};",
+                        f"        for (int i = 0; i < {units}; i++) {{",
+                        f"            cur_acc[i] += bias[i];",
+                        f"        }}",
+                        f"    }}",
+                    ])
+                
+                lines.append("")
                 cur_shape = [cur_shape[0], units, 1, 1]
                 
             elif "nn.batch_flatten" in op or "reshape" in op or "squeeze" in op:
-                # Reshape operations - just update dimensions
-                if len(out_shape) >= 1:
+                # Reshape operations - preserve dimensions for classifier
+                # If output shape is empty/invalid, keep current shape
+                if len(out_shape) >= 2:
                     lines.extend([
                         f"    // Reshape/Flatten: output shape {out_shape}",
                         f"    // No computation needed, just dimension tracking",
@@ -830,20 +882,22 @@ class NPUCodeGenerator:
                     new_shape = list(out_shape) + [1, 1, 1, 1]
                     cur_shape = new_shape[:4]
                     lines.extend([
-                        f"    cur_c = {cur_shape[1] if len(out_shape) > 1 else 1};",
+                        f"    cur_c = {cur_shape[1] if len(out_shape) > 1 else cur_shape[1]};",
                         f"    cur_h = {cur_shape[2] if len(out_shape) > 2 else 1};",
                         f"    cur_w = {cur_shape[3] if len(out_shape) > 3 else 1};",
                         "",
                     ])
                 else:
+                    # Shape invalid, keep current (common for dyn.reshape)
                     lines.extend([
-                        f"    // Reshape/Flatten",
+                        f"    // Reshape/Flatten (shape unchanged for classifier)",
+                        f"    // Keeping dimensions: [{cur_shape[1]}, {cur_shape[2]}, {cur_shape[3]}]",
                         "",
                     ])
                 
             elif "concatenate" in op:
-                # Concatenation - update dimensions from output
-                if len(out_shape) >= 1:
+                # Concatenation - usually for shape inference, preserve dimensions
+                if len(out_shape) >= 2:
                     lines.extend([
                         f"    // Concatenate: output shape {out_shape}",
                         f"    // Dimensions updated from TVM shape inference",
@@ -851,14 +905,15 @@ class NPUCodeGenerator:
                     new_shape = list(out_shape) + [1, 1, 1, 1]
                     cur_shape = new_shape[:4]
                     lines.extend([
-                        f"    cur_c = {cur_shape[1] if len(out_shape) > 1 else 1};",
+                        f"    cur_c = {cur_shape[1]};",
                         f"    cur_h = {cur_shape[2] if len(out_shape) > 2 else 1};",
                         f"    cur_w = {cur_shape[3] if len(out_shape) > 3 else 1};",
                         "",
                     ])
                 else:
+                    # For classifier path, concatenate is shape manipulation, keep dims
                     lines.extend([
-                        f"    // Concatenate",
+                        f"    // Concatenate (shape manipulation for classifier, dimensions unchanged)",
                         "",
                     ])
                     
@@ -923,6 +978,180 @@ class NPUCodeGenerator:
 
 
 #############################################################################
+# Test Data and Program Generation
+#############################################################################
+
+def generate_test_data(onnx_model, test_dir, input_shape, input_scale):
+    """Generate test input/output data for verification."""
+    import onnxruntime
+    
+    # Create deterministic random input
+    np.random.seed(42)
+    input_data = (np.random.randn(*input_shape).astype(np.float32) * 50)
+    
+    # Quantize input to INT8
+    abs_max = max(abs(input_data.min()), abs(input_data.max()))
+    qmax = 127
+    input_scale = abs_max / qmax
+    input_q = np.clip(np.round(input_data / input_scale), -128, 127).astype(np.int8)
+    
+    # Run ONNX Runtime inference for reference
+    sess = onnxruntime.InferenceSession(onnx_model.SerializeToString())
+    input_name = sess.get_inputs()[0].name
+    output = sess.run(None, {input_name: input_data})[0]
+    
+    # Quantize output to INT32
+    output_max = max(abs(output.min()), abs(output.max()))
+    output_scale = output_max / (2**30)
+    output_q = (output / output_scale).astype(np.int32)
+    
+    # Get top-5
+    top5_idx = np.argsort(output[0])[-5:][::-1]
+    
+    # Generate C header with embedded data
+    header_path = os.path.join(test_dir, 'test_data.h')
+    with open(header_path, 'w') as f:
+        f.write("/**\n * Test data for REMU verification\n */\n\n")
+        f.write("#ifndef __TEST_DATA_H__\n#define __TEST_DATA_H__\n\n")
+        f.write("#include <stdint.h>\n\n")
+        f.write(f"#define TEST_INPUT_SIZE {input_q.size}\n")
+        f.write(f"#define TEST_OUTPUT_SIZE {output.shape[1]}\n")
+        f.write(f"#define EXPECTED_CLASS {top5_idx[0]}\n\n")
+        
+        # Embed test input array
+        f.write(f"static const int8_t test_input_data[{input_q.size}] = {{\n")
+        for i in range(0, input_q.size, 16):
+            chunk = input_q.flat[i:min(i+16, input_q.size)]
+            f.write("    " + ", ".join(f"{x:4d}" for x in chunk))
+            f.write(",\n" if i + 16 < input_q.size else "\n")
+        f.write("};\n\n")
+        
+        # Embed reference output
+        f.write(f"static const int32_t test_output_ref[{output.shape[1]}] = {{\n")
+        for i in range(0, output.shape[1], 8):
+            chunk = output_q[0][i:min(i+8, output.shape[1])]
+            f.write("    " + ", ".join(f"{x:12d}" for x in chunk))
+            f.write(",\n" if i + 8 < output.shape[1] else "\n")
+        f.write("};\n\n")
+        
+        f.write("#endif\n")
+    
+    print(f"  Generated test data: {header_path}")
+    print(f"    Expected class: {top5_idx[0]}, Top-5: {top5_idx.tolist()}")
+
+
+def generate_test_program(test_c, model_name, input_shape):
+    """Generate test program."""
+    with open(test_c, 'w') as f:
+        f.write(f"""/**
+ * {model_name.upper()} Inference Test for REMU
+ */
+
+#include <am.h>
+#include <klib.h>
+
+// External inference function
+extern int {model_name}_inference(const int8_t* input, int32_t* output);
+
+// Test data - included from generated header
+#include "test_data/test_data.h"
+
+// Output buffer
+static int32_t output[TEST_OUTPUT_SIZE] __attribute__((aligned(4)));
+
+// Helper: Find top-k indices
+static void find_topk(const int32_t* scores, int n, int k, int* indices) {{
+    for (int i = 0; i < k; i++) {{
+        indices[i] = -1;
+    }}
+    for (int i = 0; i < n; i++) {{
+        for (int j = 0; j < k; j++) {{
+            if (indices[j] < 0 || scores[i] > scores[indices[j]]) {{
+                for (int m = k - 1; m > j; m--) {{
+                    indices[m] = indices[m - 1];
+                }}
+                indices[j] = i;
+                break;
+            }}
+        }}
+    }}
+}}
+
+int main() {{
+    printf("=== {model_name.upper()} Inference Test ===\\n");
+    printf("Input size: %d bytes\\n", TEST_INPUT_SIZE);
+    printf("Output size: %d elements\\n", TEST_OUTPUT_SIZE);
+    printf("\\n");
+    
+    // Run inference
+    printf("Running inference...\\n");
+    int ret = {model_name}_inference(test_input_data, output);
+    if (ret != 0) {{
+        printf("ERROR: Inference failed with code %d\\n", ret);
+        return 1;
+    }}
+    printf("Inference completed!\\n\\n");
+
+    // Basic output stats
+    int32_t min_val = output[0];
+    int32_t max_val = output[0];
+    int nonzero = 0;
+    int64_t max_abs_diff = 0;
+    for (int i = 0; i < TEST_OUTPUT_SIZE; i++) {{
+        int32_t v = output[i];
+        if (v != 0) nonzero++;
+        if (v < min_val) min_val = v;
+        if (v > max_val) max_val = v;
+        int64_t diff = (int64_t)v - (int64_t)test_output_ref[i];
+        if (diff < 0) diff = -diff;
+        if (diff > max_abs_diff) max_abs_diff = diff;
+    }}
+    printf("Output stats: min=%d max=%d nonzero=%d/%d\\n", min_val, max_val, nonzero, TEST_OUTPUT_SIZE);
+    printf("Max abs diff vs ref: %ld\\n\\n", (long)max_abs_diff);
+    
+    // Find top-5 predictions
+    int top5[5];
+    find_topk(output, TEST_OUTPUT_SIZE, 5, top5);
+    
+    printf("Top-5 Predictions:\\n");
+    for (int i = 0; i < 5; i++) {{
+        printf("  #%d: Class %d (score: %d)\\n", 
+               i + 1, top5[i], output[top5[i]]);
+    }}
+    printf("\\n");
+    
+    // Compare with expected
+    printf("Expected: Class %d\\n", EXPECTED_CLASS);
+    printf("Got:      Class %d\\n", top5[0]);
+    
+    if (top5[0] == EXPECTED_CLASS) {{
+        printf("\\n✓ PASS: Top-1 prediction matches!\\n");
+        return 0;
+    }} else {{
+        printf("\\n✗ FAIL: Top-1 mismatch\\n");
+        return 1;
+    }}
+}}
+""")
+    print(f"  Generated test program: {test_c}")
+
+
+def generate_makefile(makefile_path, model_name):
+    """Generate Makefile for building and running."""
+    with open(makefile_path, 'w') as f:
+        f.write(f"""# {model_name.upper()} Inference Test for REMU
+# Build: make ARCH=riscv32-remu run
+
+NAME = {model_name}
+SRCS = {model_name}_inference.c test_{model_name}.c
+LIBS = klib
+
+include $(REMU_AM_HOME)/Makefile
+""")
+    print(f"  Generated Makefile: {makefile_path}")
+
+
+#############################################################################
 # Main Compiler
 #############################################################################
 
@@ -972,6 +1201,8 @@ def compile_model(onnx_path: str,
     # Extract Conv-Bias mapping from ONNX graph
     # In ONNX, Conv nodes have inputs: [input, weight, bias?]
     conv_bias_map = {}  # weight_name -> bias_name
+    dense_bias_map = {}  # weight_name -> bias_name (for Gemm/MatMul)
+    
     for node in onnx_model.graph.node:
         if node.op_type == "Conv" and len(node.input) >= 3:
             weight_name = node.input[1]
@@ -979,8 +1210,15 @@ def compile_model(onnx_path: str,
             if bias_name in onnx_weights:
                 conv_bias_map[weight_name] = bias_name
                 print(f"  Conv bias mapping: {weight_name} -> {bias_name}")
+        elif node.op_type == "Gemm" and len(node.input) >= 3:
+            weight_name = node.input[1]
+            bias_name = node.input[2]
+            if bias_name in onnx_weights:
+                dense_bias_map[weight_name] = bias_name
+                print(f"  Dense bias mapping: {weight_name} -> {bias_name}")
     
     print(f"  Found {len(conv_bias_map)} Conv layers with bias")
+    print(f"  Found {len(dense_bias_map)} Dense layers with bias")
     
     # Print weight summary
     total_params = sum(w.size for w in onnx_weights.values())
@@ -1055,17 +1293,22 @@ def compile_model(onnx_path: str,
     # First pass: add conv/fc weights and record their scales
     for name, tensor in onnx_weights.items():
         if tensor.dtype in [np.float32, np.float16, np.float64]:
-            # Check if this is a bias tensor (1D and in conv_bias_map values)
-            is_bias = name in conv_bias_map.values()
+            # Check if this is a bias tensor
+            is_conv_bias = name in conv_bias_map.values()
+            is_dense_bias = name in dense_bias_map.values()
             
-            if is_bias:
+            if is_conv_bias or is_dense_bias:
                 # Skip bias for now, will add with proper scale later
                 continue
             
+            # Dense weights in ONNX are typically [out_features, in_features],
+            # but npu_matmul expects B in [K, N] layout => transpose to [in, out].
+            if name in dense_bias_map and tensor.ndim == 2:
+                tensor = tensor.T
             w = codegen.add_weight(name, tensor)
             weight_scales[name] = w.scale
     
-    # Second pass: add bias tensors with proper accumulator scale
+    # Second pass: add conv bias tensors with proper accumulator scale
     # Assume input scale ~= 1/127 for quantized input, or use tracked scale
     input_scale = 1.0 / 127.0  # Default input scale for int8
     
@@ -1074,7 +1317,15 @@ def compile_model(onnx_path: str,
             bias_tensor = onnx_weights[bias_name]
             weight_scale = weight_scales.get(conv_weight, 1.0 / 127.0)
             codegen.add_bias(bias_name, bias_tensor, input_scale, weight_scale)
-            print(f"  Added bias: {bias_name} (scale={input_scale * weight_scale:.6e})")
+            print(f"  Added conv bias: {bias_name} (scale={input_scale * weight_scale:.6e})")
+    
+    # Third pass: add dense bias tensors
+    for dense_weight, bias_name in dense_bias_map.items():
+        if bias_name in onnx_weights:
+            bias_tensor = onnx_weights[bias_name]
+            weight_scale = weight_scales.get(dense_weight, 1.0 / 127.0)
+            codegen.add_bias(bias_name, bias_tensor, input_scale, weight_scale)
+            print(f"  Added dense bias: {bias_name} (scale={input_scale * weight_scale:.6e})")
     
     # Also add any TVM params not in ONNX
     for name, param in params.items():
@@ -1091,13 +1342,29 @@ def compile_model(onnx_path: str,
     
     codegen.generate_weights_binary(weights_bin)
     codegen.generate_weights_header(weights_h)
-    codegen.generate_inference_code(inference_c, layers, input_shape, onnx_weights, conv_bias_map)
+    codegen.generate_inference_code(inference_c, layers, input_shape, onnx_weights, conv_bias_map, dense_bias_map)
     
     # Save layer info for debugging
     layer_data = [layer.to_dict() for layer in layers]
     with open(layers_json, 'w') as f:
         json.dump(layer_data, f, indent=2, default=str)
     print(f"  Layer info: {layers_json}")
+    
+    # Generate test data and test program
+    print("\n[7/7] Generating test data and test program...")
+    test_dir = os.path.join(output_dir, "test_data")
+    os.makedirs(test_dir, exist_ok=True)
+    
+    # Generate test data (use ONNX model for reference inference)
+    generate_test_data(onnx_model, test_dir, input_shape, input_scale)
+    
+    # Generate test program
+    test_c = os.path.join(output_dir, f"test_{model_name}.c")
+    generate_test_program(test_c, model_name, input_shape)
+    
+    # Generate Makefile
+    makefile_path = os.path.join(output_dir, "Makefile")
+    generate_makefile(makefile_path, model_name)
     
     print("\n" + "=" * 70)
     print("Compilation Complete!")
@@ -1107,6 +1374,11 @@ def compile_model(onnx_path: str,
     print(f"  - {model_name}_weights.h")
     print(f"  - {model_name}_inference.c")
     print(f"  - {model_name}_layers.json")
+    print(f"  - test_{model_name}.c")
+    print(f"  - Makefile")
+    print(f"  - test_data/test_data.h (with embedded test input)")
+    print(f"\nTo build and run on REMU:")
+    print(f"  cd {output_dir} && make ARCH=riscv32-remu run")
     
     return {
         "weights_size": codegen.current_offset,
