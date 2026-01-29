@@ -1,3 +1,4 @@
 compiler/data
 compiler/output
 *.onnx
+compiler/unit-test
