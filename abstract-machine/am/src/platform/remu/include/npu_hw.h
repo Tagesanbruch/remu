@@ -51,15 +51,18 @@ extern "C" {
 #define REG_GEMM_N 0x24
 #define REG_GEMM_K 0x28
 #define REG_GEMM_CTRL 0x2C
+#define REG_GEMM_A_OFFSET 0x30
+#define REG_GEMM_B_OFFSET 0x34
+#define REG_GEMM_C_OFFSET 0x38
 
-// Pooling Registers
-#define REG_POOL_TYPE 0x30
-#define REG_POOL_IN_H 0x34
-#define REG_POOL_IN_W 0x38
-#define REG_POOL_KH 0x3C
-#define REG_POOL_KW 0x40
-#define REG_POOL_STRIDE 0x44
-#define REG_POOL_CTRL 0x48
+// Pooling Registers 
+#define REG_POOL_TYPE 0xF0
+#define REG_POOL_IN_H 0xF4
+#define REG_POOL_IN_W 0xF8
+#define REG_POOL_KH 0xFC
+#define REG_POOL_KW 0x100
+#define REG_POOL_STRIDE 0x104
+#define REG_POOL_CTRL 0x108
 
 // Activation Registers
 #define REG_ACT_TYPE 0x50
@@ -74,6 +77,24 @@ extern "C" {
 #define REG_PERF_GEMM 0x8C
 #define REG_PERF_ACT 0x90
 #define REG_PERF_DMA 0x94
+
+// Im2Col Registers
+#define REG_IM2COL_CTRL 0xA0
+#define REG_IM2COL_SRC_OFF 0xA4
+#define REG_IM2COL_DST_OFF 0xA8
+#define REG_IM2COL_IN_HW 0xAC
+#define REG_IM2COL_KER_HW 0xB0
+#define REG_IM2COL_CHANNELS 0xB4
+#define REG_IM2COL_STRIDE 0xB8
+#define REG_IM2COL_PADDING 0xBC
+#define REG_IM2COL_DILATION 0xC0
+
+// Transposer Registers
+#define REG_TRANS_CTRL 0xD0
+#define REG_TRANS_SRC_OFF 0xD4
+#define REG_TRANS_DST_OFF 0xD8
+#define REG_TRANS_DIMS 0xDC
+#define REG_TRANS_ELEM_SIZE 0xE0
 
 // ============================================================================
 // DMA Direction
@@ -180,6 +201,26 @@ void npu_clip(uint32_t len, int32_t min_val, int32_t max_val);
  */
 void npu_pooling_hw(uint32_t pool_type, uint32_t in_h, uint32_t in_w,
                     uint32_t kh, uint32_t kw, uint32_t stride);
+
+/**
+ * Execute HW Im2Col
+ */
+void npu_hw_im2col(uint32_t src_offset, uint32_t dst_offset, int input_h,
+                   int input_w, int channels, int kernel_h, int kernel_w,
+                   int pad_top, int pad_left, int stride_h, int stride_w,
+                   int dilation_h, int dilation_w);
+
+/**
+ * Execute HW Transpose
+ */
+void npu_hw_transpose(uint32_t src_offset, uint32_t dst_offset, int rows,
+                      int cols, int elem_size);
+
+/**
+ * Execute GEMM with Offsets
+ */
+void npu_gemm_with_offset(uint32_t m, uint32_t n, uint32_t k, uint32_t a_off,
+                          uint32_t b_off, uint32_t c_off);
 
 // ============================================================================
 // Performance Counters

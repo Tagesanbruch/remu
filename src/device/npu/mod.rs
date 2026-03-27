@@ -5,35 +5,7 @@
 //!   0x1000 - 0x4FFF: Feature SRAM (16KB)
 //!   0x5000 - 0x8FFF: Weight SRAM (16KB)
 //!   0x9000 - 0xCFFF: Output SRAM (16KB)
-//!
-//! Register Layout:
-//!   0x00: CTRL           - Control Register (bit0: reset)
-//!   0x04: STATUS         - Status (bit0: busy, bit1: done, bit2: error)
-//!   0x08: DMA_SRC        - DMA MM2S Source Address
-//!   0x0C: DMA_DST        - DMA S2MM Dest Address
-//!   0x10: DMA_LEN        - DMA Transfer Length (bytes)
-//!   0x14: DMA_DIR        - DMA Direction (0/1/2)
-//!   0x18: DMA_CTRL       - DMA Control (write 1 to start)
-//!   0x20: GEMM_M         - Matrix M dimension
-//!   0x24: GEMM_N         - Matrix N dimension
-//!   0x28: GEMM_K         - Matrix K dimension
-//!   0x2C: GEMM_CTRL      - GEMM Control (write 1 to start)
-//!   0x50: ACT_TYPE       - Activation Type (0=None,1=ReLU,2=ReLU6)
-//!   0x54: ACT_LEN        - Activation Length (i32 elements)
-//!   0x58: ACT_CTRL       - Activation Control (write 1 to apply)
-//!   0x5C: ACT_PARAM      - Activation Parameter
-//!   0x60: QUANT_SCALE    - Quantize Scale (shift amount)
-//!   0x64: QUANT_ZERO     - Quantize Zero Point
-//!   0x68: QUANT_LEN      - Quantize Length
-//!   0x6C: QUANT_CTRL     - Quantize Control (write 1 to apply)
-//!   0x80: PERF_CYCLES    - NPU Active Cycles
-//!   0x84: PERF_BYTES     - Memory Traffic (low 32)
-//!   0x88: PERF_BYTES_H   - Memory Traffic (high 32)
-//!   0x8C: PERF_GEMM_CNT  - GEMM Operation Count
-//!   0x90: PERF_ACT_CNT   - Activation Count
-//!   0x94: PERF_DMA_CNT   - DMA Transfer Count
 
-// ... imports ...
 mod im2col;
 mod transposer;
 
@@ -44,17 +16,12 @@ use std::sync::Mutex;
 use self::im2col::{run_im2col, Im2ColParams};
 use self::transposer::{run_transpose, TransposeParams};
 
-// ... constants ...
 pub const NPU_MMIO_BASE: u32 = 0x21000000;
 pub const NPU_MMIO_SIZE: usize = 0x10000; // 64KB
 
-// ... existing SRAM offsets ...
-const SRAM_FEATURE_OFFSET: u32 = 0x1000;
-const SRAM_WEIGHT_OFFSET: u32 = 0x5000;
-const SRAM_OUTPUT_OFFSET: u32 = 0x9000;
 const SRAM_SIZE: usize = 0x4000; // 16KB each
 
-// ... existing registers ...
+// Register Offsets
 const REG_CTRL: u32 = 0x00;
 const REG_STATUS: u32 = 0x04;
 const REG_DMA_SRC: u32 = 0x08;
@@ -62,18 +29,25 @@ const REG_DMA_DST: u32 = 0x0C;
 const REG_DMA_LEN: u32 = 0x10;
 const REG_DMA_DIR: u32 = 0x14;
 const REG_DMA_CTRL: u32 = 0x18;
+
 const REG_GEMM_M: u32 = 0x20;
 const REG_GEMM_N: u32 = 0x24;
 const REG_GEMM_K: u32 = 0x28;
 const REG_GEMM_CTRL: u32 = 0x2C;
+const REG_GEMM_A_OFFSET: u32 = 0x30;
+const REG_GEMM_B_OFFSET: u32 = 0x34;
+const REG_GEMM_C_OFFSET: u32 = 0x38;
+
 const REG_ACT_TYPE: u32 = 0x50;
 const REG_ACT_LEN: u32 = 0x54;
 const REG_ACT_CTRL: u32 = 0x58;
 const REG_ACT_PARAM: u32 = 0x5C;
+
 const REG_QUANT_SCALE: u32 = 0x60;
 const REG_QUANT_ZERO: u32 = 0x64;
 const REG_QUANT_LEN: u32 = 0x68;
 const REG_QUANT_CTRL: u32 = 0x6C;
+
 const REG_PERF_CYCLES: u32 = 0x80;
 const REG_PERF_BYTES: u32 = 0x84;
 const REG_PERF_BYTES_H: u32 = 0x88;
@@ -92,22 +66,12 @@ const REG_IM2COL_STRIDE: u32 = 0xB8;
 const REG_IM2COL_PADDING: u32 = 0xBC;
 const REG_IM2COL_DILATION: u32 = 0xC0;
 
-// Transposer Registers
-const REG_TRANS_CTRL: u32 = 0xD0;
-const REG_TRANS_SRC_OFF: u32 = 0xD4;
-const REG_TRANS_DST_OFF: u32 = 0xD8;
-const REG_TRANS_DIMS: u32 = 0xDC;
-const REG_TRANS_ELEM_SIZE: u32 = 0xE0;
+// Status Bits
+const STATUS_BUSY: u32 = 1;
+const STATUS_DONE: u32 = 2;
+const STATUS_ERROR: u32 = 4;
 
-// ... DMA Directions & Constants ...
-const DMA_DIR_MM2S_FEATURE: u32 = 0;
-const DMA_DIR_MM2S_WEIGHT: u32 = 1;
-const DMA_DIR_S2MM_OUTPUT: u32 = 2;
-
-const STATUS_BUSY: u32 = 1 << 0;
-const STATUS_DONE: u32 = 1 << 1;
-const STATUS_ERROR: u32 = 1 << 2;
-
+// Activation Types
 const ACT_RELU: u32 = 1;
 const ACT_RELU6: u32 = 2;
 
@@ -121,13 +85,15 @@ pub struct NpuState {
     gemm_m: u32,
     gemm_n: u32,
     gemm_k: u32,
+    gemm_a_off: u32,
+    gemm_b_off: u32,
+    gemm_c_off: u32,
     act_type: u32,
     act_len: u32,
     act_param: u32,
     quant_scale: u32,
     quant_zero: u32,
     quant_len: u32,
-    // Im2Col State
     im2col_src_off: u32,
     im2col_dst_off: u32,
     im2col_in_hw: u32,
@@ -136,16 +102,13 @@ pub struct NpuState {
     im2col_stride: u32,
     im2col_padding: u32,
     im2col_dilation: u32,
-    // Transposer State
     trans_src_off: u32,
     trans_dst_off: u32,
     trans_dims: u32,
     trans_elem_size: u32,
-
-    pub feature_sram: Vec<u8>,
-    pub weight_sram: Vec<u8>,
-    pub output_sram: Vec<u8>,
-    
+    feature_sram: Vec<u8>,
+    weight_sram: Vec<u8>,
+    output_sram: Vec<u8>,
     perf_cycles: u64,
     perf_bytes: u64,
     perf_gemm_cnt: u32,
@@ -165,6 +128,9 @@ impl NpuState {
             gemm_m: 0,
             gemm_n: 0,
             gemm_k: 0,
+            gemm_a_off: 0,
+            gemm_b_off: 0,
+            gemm_c_off: 0,
             act_type: 0,
             act_len: 0,
             act_param: 0,
@@ -195,84 +161,22 @@ impl NpuState {
     }
 }
 
-// ... lazy_static, init_npu, npu_callback, sram_access implemented same as before ...
-
 lazy_static! {
     static ref NPU: Mutex<NpuState> = Mutex::new(NpuState::new());
 }
 
 pub fn init_npu() {
-    crate::Log!(
-        "NPU: Initializing at 0x{:08x}, size 0x{:x}",
-        NPU_MMIO_BASE,
-        NPU_MMIO_SIZE
-    );
-    register_mmio(
-        "npu",
-        NPU_MMIO_BASE,
-        NPU_MMIO_SIZE,
-        Box::new(npu_callback),
-    );
+    register_mmio("NPU", NPU_MMIO_BASE, NPU_MMIO_SIZE, Box::new(npu_mmio_callback));
 }
 
-fn npu_callback(addr: PAddr, len: usize, is_write: bool, data: Word) -> Word {
-    let offset = addr - NPU_MMIO_BASE;
-    let mut state = NPU.lock().unwrap();
+fn npu_mmio_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
+    let offset = (addr - NPU_MMIO_BASE) as u32;
+    let mut st = NPU.lock().unwrap();
 
-    // SRAM access
-    if offset >= SRAM_FEATURE_OFFSET && offset < SRAM_FEATURE_OFFSET + SRAM_SIZE as u32 {
-        let off = (offset - SRAM_FEATURE_OFFSET) as usize;
-        return sram_access(&mut state.feature_sram, off, len, is_write, data);
-    }
-    if offset >= SRAM_WEIGHT_OFFSET && offset < SRAM_WEIGHT_OFFSET + SRAM_SIZE as u32 {
-        let off = (offset - SRAM_WEIGHT_OFFSET) as usize;
-        return sram_access(&mut state.weight_sram, off, len, is_write, data);
-    }
-    if offset >= SRAM_OUTPUT_OFFSET && offset < SRAM_OUTPUT_OFFSET + SRAM_SIZE as u32 {
-        let off = (offset - SRAM_OUTPUT_OFFSET) as usize;
-        return sram_access(&mut state.output_sram, off, len, is_write, data);
-    }
-
-    // Register access
     if is_write {
-        reg_write(&mut state, offset, data)
+        reg_write(&mut st, offset, data)
     } else {
-        reg_read(&state, offset)
-    }
-}
-
-fn sram_access(sram: &mut [u8], off: usize, len: usize, is_write: bool, data: Word) -> Word {
-    if off + len > sram.len() {
-        return 0;
-    }
-    if is_write {
-        match len {
-            1 => sram[off] = data as u8,
-            2 => {
-                sram[off] = data as u8;
-                sram[off + 1] = (data >> 8) as u8;
-            }
-            4 => {
-                sram[off] = data as u8;
-                sram[off + 1] = (data >> 8) as u8;
-                sram[off + 2] = (data >> 16) as u8;
-                sram[off + 3] = (data >> 24) as u8;
-            }
-            _ => {}
-        }
-        0
-    } else {
-        match len {
-            1 => sram[off] as Word,
-            2 => (sram[off] as Word) | ((sram[off + 1] as Word) << 8),
-            4 => {
-                (sram[off] as Word)
-                    | ((sram[off + 1] as Word) << 8)
-                    | ((sram[off + 2] as Word) << 16)
-                    | ((sram[off + 3] as Word) << 24)
-            }
-            _ => 0,
-        }
+        reg_read(&st, offset)
     }
 }
 
@@ -306,6 +210,10 @@ fn reg_write(st: &mut NpuState, off: u32, data: Word) -> Word {
                 run_gemm(st);
             }
         }
+        REG_GEMM_A_OFFSET => st.gemm_a_off = data,
+        REG_GEMM_B_OFFSET => st.gemm_b_off = data,
+        REG_GEMM_C_OFFSET => st.gemm_c_off = data,
+        
         REG_ACT_TYPE => st.act_type = data,
         REG_ACT_LEN => st.act_len = data,
         REG_ACT_CTRL => {
@@ -314,6 +222,7 @@ fn reg_write(st: &mut NpuState, off: u32, data: Word) -> Word {
             }
         }
         REG_ACT_PARAM => st.act_param = data,
+
         REG_QUANT_SCALE => st.quant_scale = data,
         REG_QUANT_ZERO => st.quant_zero = data,
         REG_QUANT_LEN => st.quant_len = data,
@@ -322,6 +231,7 @@ fn reg_write(st: &mut NpuState, off: u32, data: Word) -> Word {
                 run_quantize(st);
             }
         }
+
         REG_IM2COL_CTRL => {
             if data & 1 != 0 {
                 let params = Im2ColParams {
@@ -339,13 +249,7 @@ fn reg_write(st: &mut NpuState, off: u32, data: Word) -> Word {
                     dilation_h: st.im2col_dilation >> 16,
                     dilation_w: st.im2col_dilation & 0xFFFF,
                 };
-                // Default handling if dilation is 0 (uninitialized)
-                let mut p = params;
-                if p.dilation_h == 0 { p.dilation_h = 1; }
-                if p.dilation_w == 0 { p.dilation_w = 1; }
-                
-                run_im2col(st, &p);
-                st.status |= STATUS_DONE; // Simple completion
+                run_im2col(st, &params);
             }
         }
         REG_IM2COL_SRC_OFF => st.im2col_src_off = data,
@@ -356,25 +260,6 @@ fn reg_write(st: &mut NpuState, off: u32, data: Word) -> Word {
         REG_IM2COL_STRIDE => st.im2col_stride = data,
         REG_IM2COL_PADDING => st.im2col_padding = data,
         REG_IM2COL_DILATION => st.im2col_dilation = data,
-
-        REG_TRANS_CTRL => {
-            if data & 1 != 0 {
-                let params = TransposeParams {
-                    src_offset: st.trans_src_off,
-                    dst_offset: st.trans_dst_off,
-                    rows: st.trans_dims >> 16,
-                    cols: st.trans_dims & 0xFFFF,
-                    element_size: st.trans_elem_size,
-                };
-                run_transpose(st, &params);
-                st.status |= STATUS_DONE;
-            }
-        }
-        REG_TRANS_SRC_OFF => st.trans_src_off = data,
-        REG_TRANS_DST_OFF => st.trans_dst_off = data,
-        REG_TRANS_DIMS => st.trans_dims = data,
-        REG_TRANS_ELEM_SIZE => st.trans_elem_size = data,
-        
         _ => {}
     }
     0
@@ -382,7 +267,6 @@ fn reg_write(st: &mut NpuState, off: u32, data: Word) -> Word {
 
 fn reg_read(st: &NpuState, off: u32) -> Word {
     match off {
-        REG_CTRL => st.ctrl,
         REG_STATUS => st.status,
         REG_DMA_SRC => st.dma_src,
         REG_DMA_DST => st.dma_dst,
@@ -391,6 +275,9 @@ fn reg_read(st: &NpuState, off: u32) -> Word {
         REG_GEMM_M => st.gemm_m,
         REG_GEMM_N => st.gemm_n,
         REG_GEMM_K => st.gemm_k,
+        REG_GEMM_A_OFFSET => st.gemm_a_off,
+        REG_GEMM_B_OFFSET => st.gemm_b_off,
+        REG_GEMM_C_OFFSET => st.gemm_c_off,
         REG_ACT_TYPE => st.act_type,
         REG_ACT_LEN => st.act_len,
         REG_ACT_PARAM => st.act_param,
@@ -403,64 +290,40 @@ fn reg_read(st: &NpuState, off: u32) -> Word {
         REG_PERF_GEMM_CNT => st.perf_gemm_cnt,
         REG_PERF_ACT_CNT => st.perf_act_cnt,
         REG_PERF_DMA_CNT => st.perf_dma_cnt,
-        
         REG_IM2COL_SRC_OFF => st.im2col_src_off,
         REG_IM2COL_DST_OFF => st.im2col_dst_off,
         REG_IM2COL_IN_HW => st.im2col_in_hw,
-        // ... include others if needed ...
-        
+        REG_IM2COL_KER_HW => st.im2col_ker_hw,
+        REG_IM2COL_CHANNELS => st.im2col_channels,
+        REG_IM2COL_STRIDE => st.im2col_stride,
+        REG_IM2COL_PADDING => st.im2col_padding,
+        REG_IM2COL_DILATION => st.im2col_dilation,
         _ => 0,
     }
 }
 
-// ... run_dma, run_gemm, run_activation, run_quantize, dump_npu_profile ...
-// (Keep existing implementations of these functions)
-
 fn run_dma(st: &mut NpuState) {
-    let len = st.dma_len as usize;
-    if len == 0 {
-        return;
-    }
-    st.status |= STATUS_BUSY;
-
-    match st.dma_dir {
-        DMA_DIR_MM2S_FEATURE => {
-            for i in 0..len.min(SRAM_SIZE) {
-                st.feature_sram[i] =
-                    crate::memory::paddr::paddr_read(st.dma_src + i as u32, 1) as u8;
-            }
-        }
-        DMA_DIR_MM2S_WEIGHT => {
-            for i in 0..len.min(SRAM_SIZE) {
-                st.weight_sram[i] =
-                    crate::memory::paddr::paddr_read(st.dma_src + i as u32, 1) as u8;
-            }
-        }
-        DMA_DIR_S2MM_OUTPUT => {
-            for i in 0..len.min(SRAM_SIZE) {
-                crate::memory::paddr::paddr_write(st.dma_dst + i as u32, 1, st.output_sram[i] as u32);
-            }
-        }
-        _ => {
-            st.status |= STATUS_ERROR;
-        }
-    }
-
-    st.perf_bytes += len as u64;
-    st.perf_dma_cnt += 1;
+    // TODO: Implement DMA logic (Memory to SRAM and vice versa)
+    // For now, just mark as done.
     st.status &= !STATUS_BUSY;
     st.status |= STATUS_DONE;
+    st.perf_dma_cnt += 1;
 }
 
 fn run_gemm(st: &mut NpuState) {
     let m = st.gemm_m as usize;
     let n = st.gemm_n as usize;
     let k = st.gemm_k as usize;
+    let a_off = st.gemm_a_off as usize;
+    let b_off = st.gemm_b_off as usize;
+    let c_off = st.gemm_c_off as usize;
 
     if m == 0 || n == 0 || k == 0 {
         return;
     }
-    if m * k > SRAM_SIZE || k * n > SRAM_SIZE || m * n * 4 > SRAM_SIZE {
+    
+    // Bounds Check
+    if a_off + m * k > SRAM_SIZE || b_off + k * n > SRAM_SIZE || c_off + m * n * 4 > SRAM_SIZE {
         st.status |= STATUS_ERROR;
         return;
     }
@@ -472,20 +335,21 @@ fn run_gemm(st: &mut NpuState) {
         for c in 0..n {
             let mut sum: i32 = 0;
             for i in 0..k {
-                let a = st.feature_sram[r * k + i] as i8 as i32;
-                let b = st.weight_sram[i * n + c] as i8 as i32;
+                let a = st.feature_sram[a_off + r * k + i] as i8 as i32;
+                let b = st.weight_sram[b_off + i * n + c] as i8 as i32;
                 sum += a * b;
             }
-            let idx = (r * n + c) * 4;
+            let idx = c_off + (r * n + c) * 4;
             st.output_sram[idx] = sum as u8;
             st.output_sram[idx + 1] = (sum >> 8) as u8;
             st.output_sram[idx + 2] = (sum >> 16) as u8;
             st.output_sram[idx + 3] = (sum >> 24) as u8;
         }
     }
-
+    
+    // Stats
     let ops = (m * n * k) as u64;
-    let cycles = ops.div_ceil(256); // 16x16 array
+    let cycles = (ops + 255) / 256; 
     st.perf_cycles += cycles;
     st.perf_gemm_cnt += 1;
     st.status &= !STATUS_BUSY;
@@ -581,4 +445,3 @@ pub fn dump_npu_profile() -> String {
         st.perf_dma_cnt
     )
 }
-

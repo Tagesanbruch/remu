@@ -9,6 +9,7 @@ build/
 *.so
 *.a
 *.o
+docs/
 
 # Generated configuration
 src/generated/
