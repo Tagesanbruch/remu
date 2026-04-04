@@ -271,6 +271,157 @@ def generate_precision_audit(onnx_model,
 
     return audit_path
 
+
+def _numel(shape: List[int]) -> int:
+    if not shape:
+        return 0
+    n = 1
+    for d in shape:
+        try:
+            di = int(d)
+        except Exception:
+            return 0
+        if di <= 0:
+            return 0
+        n *= di
+    return int(n)
+
+
+def _estimate_layer_ops_bytes(layer, onnx_weights: Dict[str, np.ndarray]) -> Dict[str, Any]:
+    op = layer.op_type
+    attrs = layer.attrs or {}
+    in_shape = [int(x) for x in (layer.input_shape or [])]
+    out_shape = [int(x) for x in (layer.output_shape or [])]
+
+    in_elems = _numel(in_shape)
+    out_elems = _numel(out_shape)
+
+    weight_elems = 0
+    weight_bytes = 0
+    if layer.weight_name and layer.weight_name in onnx_weights:
+        w = np.asarray(onnx_weights[layer.weight_name])
+        weight_elems = int(w.size)
+        weight_bytes = int(w.nbytes)
+
+    ops_est = 0
+    kind = "other"
+
+    if "conv2d" in op:
+        kind = "conv"
+        if len(in_shape) >= 4 and len(out_shape) >= 4:
+            n, cin, _, _ = in_shape[0], in_shape[1], in_shape[2], in_shape[3]
+            _, cout, oh, ow = out_shape[0], out_shape[1], out_shape[2], out_shape[3]
+            ks = attrs.get("kernel_size", [1, 1])
+            if isinstance(ks, (list, tuple)) and len(ks) >= 2:
+                kh, kw = int(ks[0]), int(ks[1])
+            else:
+                kh = kw = int(ks) if isinstance(ks, (int, float)) else 1
+            groups = int(attrs.get("groups", 1)) if attrs.get("groups", 1) else 1
+            cin_pg = max(cin // max(groups, 1), 1)
+            macs = int(n * oh * ow * cout * cin_pg * kh * kw)
+            ops_est = 2 * macs
+
+    elif "dense" in op:
+        kind = "dense"
+        if len(out_shape) >= 2:
+            n = out_shape[0]
+            units = out_shape[1]
+        else:
+            n = 1
+            units = int(attrs.get("units", 0))
+        if len(in_shape) >= 2:
+            in_features = _numel(in_shape[1:])
+        elif len(in_shape) == 1:
+            in_features = in_shape[0]
+        else:
+            in_features = 0
+        macs = int(n * units * in_features)
+        ops_est = 2 * macs
+
+    elif op == "add":
+        kind = "eltwise"
+        ops_est = int(max(out_elems, in_elems))
+
+    elif "clip" in op or "relu" in op:
+        kind = "activation"
+        ops_est = int(max(out_elems, in_elems))
+
+    elif "global_avg_pool2d" in op:
+        kind = "pool"
+        ops_est = int(max(in_elems, out_elems))
+
+    elif "pool2d" in op:
+        kind = "pool"
+        ks = attrs.get("pool_size", [1, 1])
+        if isinstance(ks, (list, tuple)) and len(ks) >= 2:
+            kh, kw = int(ks[0]), int(ks[1])
+        else:
+            kh = kw = int(ks) if isinstance(ks, (int, float)) else 1
+        ops_est = int(max(out_elems, 1) * max(kh * kw, 1))
+
+    elif "requantize" in op or "quantize" in op or "dequantize" in op:
+        kind = "quant"
+        ops_est = int(max(out_elems, in_elems))
+
+    # Estimated memory traffic in bytes (model-level static lower bound, not tiled runtime traffic)
+    if kind in ("conv", "dense"):
+        bytes_est = int(in_elems + weight_bytes + out_elems * 4)
+    elif kind in ("eltwise", "activation", "pool", "quant"):
+        bytes_est = int(max(in_elems, out_elems) + out_elems)
+    else:
+        bytes_est = int(max(in_elems, out_elems))
+
+    if bytes_est <= 0:
+        bytes_est = 1
+
+    return {
+        "ops_est": int(max(ops_est, 0)),
+        "bytes_est": int(bytes_est),
+        "weight_bytes": int(weight_bytes),
+        "weight_elems": int(weight_elems),
+        "kind": kind,
+    }
+
+
+def generate_roofline_meta(layers,
+                           onnx_weights: Dict[str, np.ndarray],
+                           output_dir: str,
+                           model_name: str) -> str:
+    layer_entries = []
+    total_ops = 0
+    total_bytes = 0
+
+    for layer in layers:
+        est = _estimate_layer_ops_bytes(layer, onnx_weights)
+        total_ops += est["ops_est"]
+        total_bytes += est["bytes_est"]
+        layer_entries.append({
+            "idx": int(layer.idx),
+            "name": layer.name,
+            "op_type": layer.op_type,
+            "input_shape": list(layer.input_shape or []),
+            "output_shape": list(layer.output_shape or []),
+            "weight_name": layer.weight_name,
+            "kind": est["kind"],
+            "ops_est": est["ops_est"],
+            "bytes_est": est["bytes_est"],
+            "weight_bytes": est["weight_bytes"],
+            "weight_elems": est["weight_elems"],
+        })
+
+    meta = {
+        "model_name": model_name,
+        "total_layers": len(layers),
+        "total_ops_est": int(total_ops),
+        "total_bytes_est": int(total_bytes),
+        "layers": layer_entries,
+    }
+
+    meta_path = os.path.join(output_dir, f"{model_name}_roofline_meta.json")
+    with open(meta_path, "w") as f:
+        json.dump(meta, f, indent=2, ensure_ascii=False)
+    return meta_path
+
 def compile_model(onnx_path: str, 
                   output_dir: str,
                   model_name: str = "model",
@@ -533,6 +684,14 @@ def compile_model(onnx_path: str,
     with open(layers_json, 'w') as f:
         json.dump(layer_data, f, indent=2, default=str)
     print(f"  Layer info: {layers_json}")
+
+    roofline_meta_path = generate_roofline_meta(
+        layers=layers,
+        onnx_weights=onnx_weights,
+        output_dir=output_dir,
+        model_name=model_name,
+    )
+    print(f"  Roofline meta: {roofline_meta_path}")
     
     # Generate test data and test program
     print("\n[7/7] Generating test data and test program...")
@@ -567,6 +726,7 @@ def compile_model(onnx_path: str,
     print(f"  - {model_name}_weights.c")
     print(f"  - {model_name}_inference.c")
     print(f"  - {model_name}_layers.json")
+    print(f"  - {model_name}_roofline_meta.json")
     print(f"  - {model_name}_precision_audit.json")
     print(f"  - test_{model_name}.c")
     print(f"  - Makefile")

@@ -304,6 +304,10 @@ class NPUCodeGenerator:
             "#endif",
             f'#include "{self.model_name}_weights.h"',
             "",
+            "#ifndef NPU_PROFILE_LAYERS",
+            "#define NPU_PROFILE_LAYERS 0",
+            "#endif",
+            "",
             f"// Input tensor dimensions",
             f"#define INPUT_N {N}",
             f"#define INPUT_C {C}",
@@ -594,6 +598,15 @@ class NPUCodeGenerator:
             out_shape = layer.output_shape if layer.output_shape else cur_shape
             
             lines.append(f"    // === Layer {i}: {op} ===")
+            lines.extend([
+                f"#if NPU_PROFILE_LAYERS",
+                f"    uint32_t __lp_cyc_beg_{i} = npu_get_cycles();",
+                f"    uint32_t __lp_mem_beg_{i} = npu_get_mem_bytes();",
+                f"    uint32_t __lp_gemm_beg_{i} = npu_get_gemm_count();",
+                f"    uint32_t __lp_act_beg_{i} = npu_get_act_count();",
+                f"    uint32_t __lp_dma_beg_{i} = npu_get_dma_count();",
+                f"#endif",
+            ])
             
             if "nn.conv2d" in op or "qnn.conv2d" in op:
                 # Extract conv parameters
@@ -1517,6 +1530,18 @@ class NPUCodeGenerator:
                         f"    }}",
                         "",
                     ])
+
+            lines.extend([
+                f"#if NPU_PROFILE_LAYERS",
+                f"    printf(\"LPROF,{i},{op},%u,%u,%u,%u,%u\\n\",",
+                f"           (unsigned)(npu_get_cycles() - __lp_cyc_beg_{i}),",
+                f"           (unsigned)(npu_get_mem_bytes() - __lp_mem_beg_{i}),",
+                f"           (unsigned)(npu_get_gemm_count() - __lp_gemm_beg_{i}),",
+                f"           (unsigned)(npu_get_act_count() - __lp_act_beg_{i}),",
+                f"           (unsigned)(npu_get_dma_count() - __lp_dma_beg_{i}));",
+                f"#endif",
+                "",
+            ])
         
         # Copy final output
         final_size = cur_shape[1] * cur_shape[2] * cur_shape[3]
