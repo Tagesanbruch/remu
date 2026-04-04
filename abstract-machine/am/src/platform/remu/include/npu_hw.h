@@ -29,7 +29,7 @@ extern "C" {
 #define SRAM_FEATURE 0x1000
 #define SRAM_WEIGHT 0x5000
 #define SRAM_OUTPUT 0x9000
-#define SRAM_SIZE 0x2000 // 8KB each
+#define SRAM_SIZE 0x4000 // 16KB each
 
 // ============================================================================
 // Register Offsets

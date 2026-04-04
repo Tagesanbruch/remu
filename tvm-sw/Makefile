@@ -13,7 +13,8 @@ AM_HOME ?= $(abspath ../abstract-machine)
 
 # Docker configuration
 DOCKER_IMAGE := remu-tvm:latest
-DOCKER_RUN := docker run --rm -v $(PWD):/workspace -w /workspace $(DOCKER_IMAGE)
+DOCKER_ENV ?=
+DOCKER_RUN := docker run --rm $(DOCKER_ENV) -v $(PWD):/workspace -w /workspace $(DOCKER_IMAGE)
 
 # Directories
 BUILD_DIR := build

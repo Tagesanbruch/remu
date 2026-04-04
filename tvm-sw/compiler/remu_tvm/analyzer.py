@@ -53,6 +53,15 @@ class RelayAnalyzer(ExprVisitor):
         self.last_conv_channels: int = 0
         self.pending_bias: Optional[np.ndarray] = None
         self.pending_bias_shape: List[int] = []
+        self.expr_to_layer_idx: Dict[int, int] = {}
+        self.var_to_layer_idx: Dict[str, int] = {}
+
+    def _expr_key(self, expr) -> int:
+        """Return a stable key for TVM Expr objects across Python wrapper instances."""
+        try:
+            return int(expr.handle.value)
+        except Exception:
+            return id(expr)
         
     def _get_shape(self, expr) -> List[int]:
         """Extract shape from expression type."""
@@ -112,12 +121,21 @@ class RelayAnalyzer(ExprVisitor):
     def visit_var(self, var):
         """Record variable shapes."""
         self.var_shapes[var.name_hint] = self._get_shape(var)
+
+    def visit_let(self, let):
+        """Track producer layer index for Let-bound variables."""
+        self.visit(let.value)
+        if hasattr(let.var, 'name_hint'):
+            src_idx = self.expr_to_layer_idx.get(self._expr_key(let.value), -1)
+            if src_idx >= 0:
+                self.var_to_layer_idx[let.var.name_hint] = src_idx
+        self.visit(let.body)
         
     def visit_constant(self, const):
         """Record constant tensors."""
         try:
             data = const.data.numpy()
-            self.constants[id(const)] = data
+            self.constants[self._expr_key(const)] = data
         except:
             pass
     
@@ -174,91 +192,70 @@ class RelayAnalyzer(ExprVisitor):
                 attrs["padding"] = [pad, pad, pad, pad]
                 # print(f"DEBUG: Inferred padding {pad} for {op_name} ({in_h} -> {out_h}, k={kh}, s={stride})")
 
-    def _reconcile_shapes(self, attrs: Dict[str, Any], op_name: str, input_shape: List[int], output_shape: List[int]) -> List[int]:
+    def _reconcile_shapes(self, attrs: Dict[str, Any], op_name: str, input_shape: List[int],
+                          output_shape: List[int], call=None) -> List[int]:
         """
-        Reconcile output shape with attributes.
+        Keep Relay output shape as the source of truth, and only补全 codegen 所需空间属性。
         """
-        # Only relevant for ops with spatial dimensions
-        if not output_shape or len(output_shape) < 4 or not input_shape or len(input_shape) < 4:
+        if not output_shape:
             return output_shape
-            
-        print(f"DEBUG RECONCILE ENTRY: {op_name} Keys={list(attrs.keys())}", flush=True)
 
-        # Get kernel
-        kernel = None
         if "conv2d" in op_name:
-            kernel = attrs.get("kernel_size")
-            # Fallback for MobileNetV2 if kernel_size is missing (observed issue)
-            if not kernel:
-                print(f"DEBUG RECONCILE: Missing kernel_size for {op_name}, assuming [3,3] from context", flush=True)
-                kernel = [3, 3]
-        elif "pool2d" in op_name:
-            kernel = attrs.get("pool_size")
-            
-        if not kernel: 
-            return output_shape
+            # Infer kernel_size from weight tensor shape when Relay attrs omit it.
+            if "kernel_size" not in attrs and call is not None and len(call.args) > 1:
+                w_shape = self._get_shape(call.args[1])
+                if len(w_shape) >= 4:
+                    attrs["kernel_size"] = [int(w_shape[2]), int(w_shape[3])]
 
-        kh = kernel[0] if isinstance(kernel, list) else kernel
-        kw = kernel[1] if isinstance(kernel, list) else kh
-        
-        # Get strides
-        strides = attrs.get("strides")
-        if strides:
-            stride_h = strides[0] if isinstance(strides, list) else strides
-            stride_w = strides[1] if isinstance(strides, list) else stride_h
-        else:
-            # Infer stride from input/output shape ratio if not explicitly present
-            # This handles cases where _extract_attrs fails to get strides (e.g. Layer 0)
-            if output_shape[2] > 0 and output_shape[3] > 0:
-                stride_h = input_shape[2] // output_shape[2]
-                stride_w = input_shape[3] // output_shape[3]
-                print(f"DEBUG RECONCILE: Inferred stride [{stride_h}, {stride_w}] from shapes {input_shape}->{output_shape}", flush=True)
+            # Fill missing strides from shape ratio.
+            if "strides" not in attrs:
+                if len(input_shape) >= 4 and len(output_shape) >= 4 and output_shape[2] > 0 and output_shape[3] > 0:
+                    sh = max(1, int(round(input_shape[2] / output_shape[2])))
+                    sw = max(1, int(round(input_shape[3] / output_shape[3])))
+                    attrs["strides"] = [sh, sw]
+                else:
+                    attrs["strides"] = [1, 1]
+
+            # Validate/repair padding against Relay output shape.
+            kh, kw = attrs.get("kernel_size", [1, 1])
+            sh, sw = attrs.get("strides", [1, 1])
+            pad_attr = attrs.get("padding", [0, 0, 0, 0])
+            if isinstance(pad_attr, (int, float)):
+                pad_attr = [int(pad_attr), int(pad_attr), int(pad_attr), int(pad_attr)]
+            elif hasattr(pad_attr, "__iter__"):
+                pad_attr = [int(x) for x in pad_attr]
+                if len(pad_attr) == 2:
+                    pad_attr = [pad_attr[0], pad_attr[1], pad_attr[0], pad_attr[1]]
+                elif len(pad_attr) < 4:
+                    pad_attr = [0, 0, 0, 0]
             else:
-                stride_h = stride_w = 1
-        
-        # Get padding
-        padding = attrs.get("padding", [0, 0, 0, 0])
-        # Force convert to list if possible (handles TVM Array)
-        if hasattr(padding, '__iter__'):
-             try: padding = list(padding)
-             except: pass
-             
-        if isinstance(padding, list):
-            pad_top = padding[0] if len(padding) > 0 else 0
-            pad_left = padding[1] if len(padding) > 1 else 0
-            pad_bottom = padding[2] if len(padding) > 2 else 0
-            pad_right = padding[3] if len(padding) > 3 else 0
-        else:
-            pad_top = pad_left = pad_bottom = pad_right = padding
-            
-        print(f"DEBUG RECONCILE CHECK: {op_name} In={input_shape} Out={output_shape} K={kh} S={stride_h} Pad={pad_top}", flush=True)
-        
-        # NPU kernel logic: out = (in + 2*pad - k) / stride + 1
-        effective_pad_h = pad_top
-        effective_pad_w = pad_top 
-        
-        in_h = input_shape[2]
-        in_w = input_shape[3]
-        
-        calc_out_h = (in_h + 2 * effective_pad_h - kh) // stride_h + 1
-        calc_out_w = (in_w + 2 * effective_pad_w - kw) // stride_w + 1
-        
-        print(f"DEBUG RECONCILE CALC: {calc_out_h}x{calc_out_w} vs Relay {output_shape[2]}x{output_shape[3]}", flush=True)
+                pad_attr = [0, 0, 0, 0]
 
-        # If calculated dimensions differ from Relay shape, override Relay shape
-        if calc_out_h != output_shape[2] or calc_out_w != output_shape[3]:
-            print(f"DEBUG RECONCILE UPDATE: {op_name} Relay={output_shape} -> {calc_out_h}x{calc_out_w}", flush=True)
-            new_shape = list(output_shape)
-            new_shape[2] = int(calc_out_h)
-            new_shape[3] = int(calc_out_w)
-            return new_shape
-            
+            if len(input_shape) >= 4 and len(output_shape) >= 4:
+                in_h, in_w = input_shape[2], input_shape[3]
+                out_h, out_w = output_shape[2], output_shape[3]
+
+                calc_h = (in_h + pad_attr[0] + pad_attr[2] - kh) // sh + 1
+                calc_w = (in_w + pad_attr[1] + pad_attr[3] - kw) // sw + 1
+
+                if calc_h != out_h or calc_w != out_w:
+                    pad_h_total = max(0, (out_h - 1) * sh + kh - in_h)
+                    pad_w_total = max(0, (out_w - 1) * sw + kw - in_w)
+                    pad_top = pad_h_total // 2
+                    pad_bottom = pad_h_total - pad_top
+                    pad_left = pad_w_total // 2
+                    pad_right = pad_w_total - pad_left
+                    attrs["padding"] = [pad_top, pad_left, pad_bottom, pad_right]
+                else:
+                    attrs["padding"] = pad_attr
+            else:
+                attrs["padding"] = pad_attr
+
         return output_shape
 
     def visit_call(self, call):
         """Visit Call node and extract layer info."""
         # Visit arguments first (depth-first)
-        print(f"DEBUG: VISIT CALL {call.op}", flush=True)
         for arg in call.args:
             self.visit(arg)
         
@@ -270,13 +267,22 @@ class RelayAnalyzer(ExprVisitor):
         
         # Extract attributes
         attrs = self._extract_attrs(call)
+
+        # Track producer layer index of each input expression (or -1 for Var/Const/input)
+        input_layer_idxs = []
+        for arg in call.args:
+            src_idx = self.expr_to_layer_idx.get(self._expr_key(arg), -1)
+            if src_idx < 0 and isinstance(arg, Var):
+                src_idx = self.var_to_layer_idx.get(arg.name_hint, -1)
+            input_layer_idxs.append(src_idx)
+        attrs['_input_layers'] = input_layer_idxs
         
         # Get shapes
         input_shape = self._get_shape(call.args[0]) if call.args else []
         output_shape = self._get_shape(call)
         
         # Reconcile shapes with attributes to ensure codegen consistency
-        output_shape = self._reconcile_shapes(attrs, op_name, input_shape, output_shape)
+        output_shape = self._reconcile_shapes(attrs, op_name, input_shape, output_shape, call)
 
         
         # Create layer info
@@ -308,24 +314,86 @@ class RelayAnalyzer(ExprVisitor):
                     try:
                         bias_data = bias_arg.data.numpy()
                         # Store for later use by the add operation
-                        self.expand_dims_bias[id(call)] = (bias_data, output_shape)
-                        layer.attrs['_bias_data_id'] = id(call)
+                        key = self._expr_key(call)
+                        self.expand_dims_bias[key] = (bias_data, output_shape)
+                        layer.attrs['_bias_data_id'] = key
                         layer.attrs['_bias_channels'] = len(bias_data) if bias_data.ndim == 1 else bias_data.shape[0]
                     except:
                         pass
+                elif isinstance(bias_arg, Var):
+                    # In freeze_params=False mode, bias often appears as Var instead of Constant.
+                    bias_shape = self._get_shape(bias_arg)
+                    if bias_shape:
+                        channels = int(bias_shape[0])
+                    elif len(output_shape) > 0:
+                        channels = int(output_shape[0])
+                    else:
+                        channels = 0
+                    self.expand_dims_bias[self._expr_key(call)] = (None, output_shape)
+                    layer.attrs['_bias_var_name'] = bias_arg.name_hint
+                    layer.attrs['_bias_channels'] = channels
         
         # Handle add: check if this is bias add (one input from expand_dims)
         if op_name == "add":
             for i, arg in enumerate(call.args):
-                if id(arg) in self.expand_dims_bias:
-                    bias_data, bias_shape = self.expand_dims_bias[id(arg)]
+                key = self._expr_key(arg)
+                if key in self.expand_dims_bias:
+                    bias_data, bias_shape = self.expand_dims_bias[key]
                     layer.attrs['_is_bias_add'] = True
-                    layer.attrs['_bias_channels'] = len(bias_data) if bias_data.ndim == 1 else bias_data.shape[0]
+                    if bias_data is not None:
+                        layer.attrs['_bias_channels'] = len(bias_data) if bias_data.ndim == 1 else bias_data.shape[0]
+                    elif bias_shape:
+                        layer.attrs['_bias_channels'] = int(bias_shape[0])
+                    else:
+                        layer.attrs['_bias_channels'] = 0
                     # Mark which argument has the bias
                     layer.attrs['_bias_arg_idx'] = i
                     break
+
+        def _capture_scalar(arg, name_key: str, value_key: str):
+            if isinstance(arg, Var):
+                layer.attrs[name_key] = arg.name_hint
+            elif isinstance(arg, Constant):
+                try:
+                    arr = arg.data.numpy()
+                    if arr.size > 0:
+                        layer.attrs[value_key] = float(arr.reshape(-1)[0])
+                except Exception:
+                    pass
+
+        # Handle qnn.requantize scalar parameters.
+        if "qnn.requantize" in op_name and len(call.args) >= 5:
+            _capture_scalar(call.args[1], '_rq_in_scale_name', '_rq_in_scale_val')
+            _capture_scalar(call.args[2], '_rq_in_zp_name', '_rq_in_zp_val')
+            _capture_scalar(call.args[3], '_rq_out_scale_name', '_rq_out_scale_val')
+            _capture_scalar(call.args[4], '_rq_out_zp_name', '_rq_out_zp_val')
+
+        # Handle qnn.dequantize scalar parameters.
+        if "qnn.dequantize" in op_name and len(call.args) >= 3:
+            _capture_scalar(call.args[1], '_dq_in_scale_name', '_dq_in_scale_val')
+            _capture_scalar(call.args[2], '_dq_in_zp_name', '_dq_in_zp_val')
+
+        # Handle qnn.quantize scalar parameters.
+        if "qnn.quantize" in op_name and len(call.args) >= 3:
+            _capture_scalar(call.args[1], '_q_out_scale_name', '_q_out_scale_val')
+            _capture_scalar(call.args[2], '_q_out_zp_name', '_q_out_zp_val')
+
+        # Handle qnn.conv2d scalar parameters.
+        if "qnn.conv2d" in op_name and len(call.args) >= 6:
+            _capture_scalar(call.args[2], '_qnn_in_zp_name', '_qnn_in_zp_val')
+            _capture_scalar(call.args[3], '_qnn_w_zp_name', '_qnn_w_zp_val')
+            _capture_scalar(call.args[4], '_qnn_in_scale_name', '_qnn_in_scale_val')
+            _capture_scalar(call.args[5], '_qnn_w_scale_name', '_qnn_w_scale_val')
+
+        # Handle qnn.dense scalar parameters.
+        if "qnn.dense" in op_name and len(call.args) >= 6:
+            _capture_scalar(call.args[2], '_qnn_in_zp_name', '_qnn_in_zp_val')
+            _capture_scalar(call.args[3], '_qnn_w_zp_name', '_qnn_w_zp_val')
+            _capture_scalar(call.args[4], '_qnn_in_scale_name', '_qnn_in_scale_val')
+            _capture_scalar(call.args[5], '_qnn_w_scale_name', '_qnn_w_scale_val')
         
         self.layers.append(layer)
+        self.expr_to_layer_idx[self._expr_key(call)] = layer.idx
         self.layer_idx += 1
         
         return call

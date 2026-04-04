@@ -16,8 +16,9 @@ from onnxruntime.quantization import quantize_static, CalibrationDataReader, Qua
 
 
 class ResNet50DataReader(CalibrationDataReader):
-    def __init__(self, calibration_image_folder, augmented_model_path='augmented_model.onnx'):
+    def __init__(self, calibration_image_folder, model_path, augmented_model_path='augmented_model.onnx'):
         self.image_folder = calibration_image_folder
+        self.model_path = model_path
         self.augmented_model_path = augmented_model_path
         self.preprocess_flag = True
         self.enum_data_dicts = []
@@ -26,7 +27,10 @@ class ResNet50DataReader(CalibrationDataReader):
     def get_next(self):
         if self.preprocess_flag:
             self.preprocess_flag = False
-            session = onnxruntime.InferenceSession(self.augmented_model_path, None)
+            # Newer onnxruntime may not materialize augmented_model.onnx at cwd.
+            # Fall back to the original model path for input-shape probing.
+            session_path = self.augmented_model_path if os.path.exists(self.augmented_model_path) else self.model_path
+            session = onnxruntime.InferenceSession(session_path, None)
             (_, _, height, width) = session.get_inputs()[0].shape
             nhwc_data_list = preprocess_func(self.image_folder, height, width, size_limit=0)
             input_name = session.get_inputs()[0].name
@@ -102,7 +106,7 @@ def main():
     input_model_path = args.input_model
     output_model_path = args.output_model
     calibration_dataset_path = args.calibrate_dataset
-    dr = ResNet50DataReader(calibration_dataset_path)
+    dr = ResNet50DataReader(calibration_dataset_path, input_model_path)
     quantize_static(input_model_path,
                     output_model_path,
                     dr,

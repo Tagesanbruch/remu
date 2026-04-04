@@ -10,6 +10,7 @@ mod im2col;
 mod transposer;
 
 use crate::common::{PAddr, Word};
+use crate::memory::{paddr_read, paddr_write};
 use crate::memory::mmio::register_mmio;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
@@ -65,6 +66,18 @@ const REG_IM2COL_CHANNELS: u32 = 0xB4;
 const REG_IM2COL_STRIDE: u32 = 0xB8;
 const REG_IM2COL_PADDING: u32 = 0xBC;
 const REG_IM2COL_DILATION: u32 = 0xC0;
+
+// Transpose Registers
+const REG_TRANS_CTRL: u32 = 0xD0;
+const REG_TRANS_SRC_OFF: u32 = 0xD4;
+const REG_TRANS_DST_OFF: u32 = 0xD8;
+const REG_TRANS_DIMS: u32 = 0xDC;
+const REG_TRANS_ELEM_SIZE: u32 = 0xE0;
+
+// DMA Directions
+const DMA_MM2S_FEATURE: u32 = 0;
+const DMA_MM2S_WEIGHT: u32 = 1;
+const DMA_S2MM_OUTPUT: u32 = 2;
 
 // Status Bits
 const STATUS_BUSY: u32 = 1;
@@ -169,9 +182,80 @@ pub fn init_npu() {
     register_mmio("NPU", NPU_MMIO_BASE, NPU_MMIO_SIZE, Box::new(npu_mmio_callback));
 }
 
+fn read_sram_word(buf: &[u8], idx: usize, len: usize) -> Word {
+    match len {
+        1 => buf[idx] as Word,
+        2 => (buf[idx] as Word) | ((buf[idx + 1] as Word) << 8),
+        4 => {
+            (buf[idx] as Word)
+                | ((buf[idx + 1] as Word) << 8)
+                | ((buf[idx + 2] as Word) << 16)
+                | ((buf[idx + 3] as Word) << 24)
+        }
+        _ => 0,
+    }
+}
+
+fn write_sram_word(buf: &mut [u8], idx: usize, len: usize, data: Word) {
+    match len {
+        1 => {
+            buf[idx] = data as u8;
+        }
+        2 => {
+            buf[idx] = (data & 0xFF) as u8;
+            buf[idx + 1] = ((data >> 8) & 0xFF) as u8;
+        }
+        4 => {
+            buf[idx] = (data & 0xFF) as u8;
+            buf[idx + 1] = ((data >> 8) & 0xFF) as u8;
+            buf[idx + 2] = ((data >> 16) & 0xFF) as u8;
+            buf[idx + 3] = ((data >> 24) & 0xFF) as u8;
+        }
+        _ => {}
+    }
+}
+
 fn npu_mmio_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
     let offset = (addr - NPU_MMIO_BASE) as u32;
     let mut st = NPU.lock().unwrap();
+
+    // SRAM windows are directly memory-mapped for unit tests and fast paths.
+    if (0x1000..0x5000).contains(&offset) {
+        let idx = (offset - 0x1000) as usize;
+        if idx + _len > SRAM_SIZE {
+            st.status |= STATUS_ERROR;
+            return 0;
+        }
+        if is_write {
+            write_sram_word(&mut st.feature_sram, idx, _len, data);
+            return 0;
+        }
+        return read_sram_word(&st.feature_sram, idx, _len);
+    }
+    if (0x5000..0x9000).contains(&offset) {
+        let idx = (offset - 0x5000) as usize;
+        if idx + _len > SRAM_SIZE {
+            st.status |= STATUS_ERROR;
+            return 0;
+        }
+        if is_write {
+            write_sram_word(&mut st.weight_sram, idx, _len, data);
+            return 0;
+        }
+        return read_sram_word(&st.weight_sram, idx, _len);
+    }
+    if (0x9000..0xd000).contains(&offset) {
+        let idx = (offset - 0x9000) as usize;
+        if idx + _len > SRAM_SIZE {
+            st.status |= STATUS_ERROR;
+            return 0;
+        }
+        if is_write {
+            write_sram_word(&mut st.output_sram, idx, _len, data);
+            return 0;
+        }
+        return read_sram_word(&st.output_sram, idx, _len);
+    }
 
     if is_write {
         reg_write(&mut st, offset, data)
@@ -234,6 +318,8 @@ fn reg_write(st: &mut NpuState, off: u32, data: Word) -> Word {
 
         REG_IM2COL_CTRL => {
             if data & 1 != 0 {
+                st.status |= STATUS_BUSY;
+                st.status &= !(STATUS_DONE | STATUS_ERROR);
                 let params = Im2ColParams {
                     src_offset: st.im2col_src_off,
                     dst_offset: st.im2col_dst_off,
@@ -250,6 +336,8 @@ fn reg_write(st: &mut NpuState, off: u32, data: Word) -> Word {
                     dilation_w: st.im2col_dilation & 0xFFFF,
                 };
                 run_im2col(st, &params);
+                st.status &= !STATUS_BUSY;
+                st.status |= STATUS_DONE;
             }
         }
         REG_IM2COL_SRC_OFF => st.im2col_src_off = data,
@@ -260,6 +348,27 @@ fn reg_write(st: &mut NpuState, off: u32, data: Word) -> Word {
         REG_IM2COL_STRIDE => st.im2col_stride = data,
         REG_IM2COL_PADDING => st.im2col_padding = data,
         REG_IM2COL_DILATION => st.im2col_dilation = data,
+        REG_TRANS_CTRL => {
+            if data & 1 != 0 {
+                st.status |= STATUS_BUSY;
+                st.status &= !(STATUS_DONE | STATUS_ERROR);
+                let dims = st.trans_dims;
+                let params = TransposeParams {
+                    src_offset: st.trans_src_off,
+                    dst_offset: st.trans_dst_off,
+                    rows: dims >> 16,
+                    cols: dims & 0xFFFF,
+                    element_size: st.trans_elem_size,
+                };
+                run_transpose(st, &params);
+                st.status &= !STATUS_BUSY;
+                st.status |= STATUS_DONE;
+            }
+        }
+        REG_TRANS_SRC_OFF => st.trans_src_off = data,
+        REG_TRANS_DST_OFF => st.trans_dst_off = data,
+        REG_TRANS_DIMS => st.trans_dims = data,
+        REG_TRANS_ELEM_SIZE => st.trans_elem_size = data,
         _ => {}
     }
     0
@@ -298,13 +407,66 @@ fn reg_read(st: &NpuState, off: u32) -> Word {
         REG_IM2COL_STRIDE => st.im2col_stride,
         REG_IM2COL_PADDING => st.im2col_padding,
         REG_IM2COL_DILATION => st.im2col_dilation,
+        REG_TRANS_SRC_OFF => st.trans_src_off,
+        REG_TRANS_DST_OFF => st.trans_dst_off,
+        REG_TRANS_DIMS => st.trans_dims,
+        REG_TRANS_ELEM_SIZE => st.trans_elem_size,
         _ => 0,
     }
 }
 
 fn run_dma(st: &mut NpuState) {
-    // TODO: Implement DMA logic (Memory to SRAM and vice versa)
-    // For now, just mark as done.
+    let len = st.dma_len as usize;
+    st.status |= STATUS_BUSY;
+    st.status &= !(STATUS_DONE | STATUS_ERROR);
+
+    if len == 0 {
+        st.status &= !STATUS_BUSY;
+        st.status |= STATUS_DONE;
+        st.perf_dma_cnt += 1;
+        return;
+    }
+
+    let ok = match st.dma_dir {
+        DMA_MM2S_FEATURE => {
+            if len > SRAM_SIZE {
+                false
+            } else {
+                for i in 0..len {
+                    st.feature_sram[i] = paddr_read(st.dma_src.wrapping_add(i as u32), 1) as u8;
+                }
+                true
+            }
+        }
+        DMA_MM2S_WEIGHT => {
+            if len > SRAM_SIZE {
+                false
+            } else {
+                for i in 0..len {
+                    st.weight_sram[i] = paddr_read(st.dma_src.wrapping_add(i as u32), 1) as u8;
+                }
+                true
+            }
+        }
+        DMA_S2MM_OUTPUT => {
+            if len > SRAM_SIZE {
+                false
+            } else {
+                for i in 0..len {
+                    paddr_write(st.dma_dst.wrapping_add(i as u32), 1, st.output_sram[i] as u32);
+                }
+                true
+            }
+        }
+        _ => false,
+    };
+
+    if ok {
+        st.perf_bytes = st.perf_bytes.saturating_add(len as u64);
+    } else {
+        st.status |= STATUS_ERROR;
+    }
+
     st.status &= !STATUS_BUSY;
     st.status |= STATUS_DONE;
     st.perf_dma_cnt += 1;
@@ -377,7 +539,7 @@ fn run_activation(st: &mut NpuState) {
         let result = match st.act_type {
             ACT_RELU => val.max(0),
             ACT_RELU6 => {
-                let max = if param == 0 { 6 << 16 } else { param };
+                let max = if param == 0 { 6 } else { param };
                 val.max(0).min(max)
             }
             _ => val,

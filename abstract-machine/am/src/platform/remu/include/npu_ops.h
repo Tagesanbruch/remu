@@ -198,6 +198,18 @@ void npu_requantize(int32_t *input, int8_t *output, int len,
                     int32_t scale_q16, int8_t zero_point);
 
 /**
+ * High-precision requantize with Q31 multiplier.
+ *
+ * @param input  Input int32 tensor
+ * @param output Output int8 tensor
+ * @param len    Number of elements
+ * @param scale_q31 Scale factor in Q31 fixed-point
+ * @param zero_point Output zero point
+ */
+void npu_requantize_q31(int32_t *input, int8_t *output, int len,
+                        int32_t scale_q31, int8_t zero_point);
+
+/**
  * Simple requantize with right shift (power-of-2 scale)
  * 
  * @param input  Input int32 tensor
@@ -206,6 +218,27 @@ void npu_requantize(int32_t *input, int8_t *output, int len,
  * @param shift  Right shift amount (output = input >> shift)
  */
 void npu_requantize_shift(int32_t *input, int8_t *output, int len, int shift);
+
+/**
+ * Adaptive requantize using per-tensor dynamic range.
+ *
+ * Scales int32 tensor to int8 by selecting a divisor from current max abs value,
+ * minimizing saturation when no calibrated per-layer scale is available.
+ */
+void npu_requantize_auto(int32_t *input, int8_t *output, int len);
+
+/**
+ * Configure the value used by convolution im2col padding.
+ *
+ * Default is 0. qnn conv lowering can set this to input zero-point so that
+ * border padding follows quantized zero semantics.
+ */
+void npu_set_input_pad_value(int8_t pad_value);
+
+/**
+ * Read the currently configured convolution padding fill value.
+ */
+int8_t npu_get_input_pad_value(void);
 
 // ============================================================================
 // Utility Functions

@@ -7,6 +7,16 @@
 #include "npu_hw.h"
 #include <stdint.h>
 
+static int8_t g_im2col_pad_value = 0;
+
+void npu_set_input_pad_value(int8_t pad_value) {
+    g_im2col_pad_value = pad_value;
+}
+
+int8_t npu_get_input_pad_value(void) {
+    return g_im2col_pad_value;
+}
+
 // ============================================================================
 // Data Layout Transformations
 // ============================================================================
@@ -72,19 +82,20 @@ void scatter_output_columns_i32(int32_t *src, int32_t *dst, int m, int n, int co
  * K = in_c * kh * kw
  */
 void im2col_single(int8_t *input, int8_t *col, int in_c, int in_h, int in_w,
-                   int kh, int kw, int oh, int ow, int pad, int stride) {
+                   int kh, int kw, int oh, int ow, int pad_top, int pad_left,
+                   int stride) {
     int K = in_c * kh * kw;
     for (int ic = 0; ic < in_c; ic++) {
         for (int ky = 0; ky < kh; ky++) {
             for (int kx = 0; kx < kw; kx++) {
-                int ih = oh * stride - pad + ky;
-                int iw = ow * stride - pad + kx;
+                int ih = oh * stride - pad_top + ky;
+                int iw = ow * stride - pad_left + kx;
                 int k_idx = ic * kh * kw + ky * kw + kx;
                 
                 if (ih >= 0 && ih < in_h && iw >= 0 && iw < in_w) {
                     col[k_idx] = input[ic * in_h * in_w + ih * in_w + iw];
                 } else {
-                    col[k_idx] = 0;  // Zero padding
+                    col[k_idx] = g_im2col_pad_value;
                 }
             }
         }
@@ -99,7 +110,8 @@ void im2col_single(int8_t *input, int8_t *col, int in_c, int in_h, int in_w,
 void im2col_tile(int8_t *input, int8_t *col_buf,
                  int in_c, int in_h, int in_w,
                  int kh, int kw, int out_w,
-                 int m_start, int m_end, int pad, int stride) {
+                 int m_start, int m_end, int pad_top, int pad_left,
+                 int stride) {
     int K = in_c * kh * kw;
     int M_cur = m_end - m_start;
     
@@ -108,7 +120,7 @@ void im2col_tile(int8_t *input, int8_t *col_buf,
         int oh = m / out_w;
         int ow = m % out_w;
         im2col_single(input, col_buf + m_idx * K, in_c, in_h, in_w,
-                      kh, kw, oh, ow, pad, stride);
+                      kh, kw, oh, ow, pad_top, pad_left, stride);
     }
 }
 
@@ -124,7 +136,15 @@ void im2col_tile(int8_t *input, int8_t *col_buf,
 void requantize_i32_to_i8(int32_t *input, int8_t *output, int len,
                           int32_t scale_q16, int8_t zero_point) {
     for (int i = 0; i < len; i++) {
-        int64_t scaled = ((int64_t)input[i] * scale_q16) >> 16;
+        int64_t prod = (int64_t)input[i] * scale_q16;
+        int sign = (prod < 0) ? -1 : 1;
+        uint64_t abs_prod = (prod < 0) ? (uint64_t)(-prod) : (uint64_t)prod;
+        uint64_t q = abs_prod >> 16;
+        uint64_t rem = abs_prod & 0xFFFFu;
+        if (rem > 0x8000u || (rem == 0x8000u && (q & 1u))) {
+            q++;
+        }
+        int64_t scaled = (sign > 0) ? (int64_t)q : -(int64_t)q;
         int32_t result = (int32_t)scaled + zero_point;
         
         // Clamp to int8 range
