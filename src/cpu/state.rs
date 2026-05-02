@@ -1,6 +1,6 @@
 // CPU state structure
 
-use crate::common::{Word, PrivMode};
+use crate::common::{PrivMode, Word};
 use crate::config::RuntimeConfig;
 use std::sync::{Arc, Mutex};
 
@@ -29,23 +29,23 @@ impl CpuState {
         // Reset PC to reset vector
         let cfg = RuntimeConfig::default();
         self.pc = crate::config::reset_vector(&cfg);
-        
+
         // Zero all GPRs
         self.gpr = [0; 32];
-        
+
         // Initialize key CSRs
         self.init_csr();
-        
+
         // Start in Machine mode
         self.mode = PrivMode::Machine;
-        
+
         log::info!("CPU initialized: PC = 0x{:08x}", self.pc);
     }
 
     pub fn init_csr(&mut self) {
         // mstatus
         self.csr[0x300] = 0x1800; // MPP=11 (Machine)
-        
+
         // misa: MXL=1 (32-bit), Extensions: I(8), M(12), A(0), S(18)
         let misa = (1 << 30) | (1 << 0) | (1 << 8) | (1 << 12) | (1 << 18);
         self.csr[0x301] = misa;
@@ -53,7 +53,7 @@ impl CpuState {
 
     pub fn get_gpr(&self, idx: usize) -> Word {
         if idx == 0 {
-            0  // x0 is always 0
+            0 // x0 is always 0
         } else {
             self.gpr[idx]
         }

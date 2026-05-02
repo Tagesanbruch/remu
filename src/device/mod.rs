@@ -1,31 +1,31 @@
 // Device management
 
-pub mod timer;
-pub mod serial;
-pub mod keyboard;
-pub mod vga;
 pub mod audio;
-pub mod disk;
 pub mod clint;
-pub mod plic;
+pub mod disk;
 pub mod intr;
+pub mod keyboard;
+pub mod plic;
 pub mod sdl;
+pub mod serial;
+pub mod timer;
+pub mod vga;
 
 pub fn init_device() {
     crate::Log!("Initializing devices...");
-    
+
     // Timer (Core time source)
     timer::init_timer();
-    
+
     // Interrupt Controllers
     clint::init_clint();
     plic::init_plic();
-    
+
     // Peripherals
     serial::init_serial();
     keyboard::init_keyboard();
     vga::init_vga();
-    
+
     // Init SDL
     // sdl::init_sdl(); // Called by init_vga now
     audio::init_audio();
@@ -34,17 +34,18 @@ pub fn init_device() {
 
 pub fn device_update() {
     use std::sync::Mutex;
-    use std::time::{Instant, Duration};
-    
+    use std::time::{Duration, Instant};
+
     // Throttle to ~60Hz to avoid killing performance
     // NEMU uses 1000000 / TIMER_HZ. Let's assume 60Hz.
     lazy_static::lazy_static! {
         static ref LAST_UPDATE: Mutex<Instant> = Mutex::new(Instant::now());
     }
-    
+
     let now = Instant::now();
     let mut last = LAST_UPDATE.lock().unwrap();
-    if now.duration_since(*last) < Duration::from_millis(16) { // ~60Hz
+    if now.duration_since(*last) < Duration::from_millis(16) {
+        // ~60Hz
         return;
     }
     *last = now;

@@ -1,8 +1,8 @@
-use std::fs;
-use goblin::elf::Elf;
 use crate::common::VAddr;
 use crate::generated::config::*;
 use crate::Log;
+use goblin::elf::Elf;
+use std::fs;
 
 #[derive(Debug, Clone)]
 pub struct Symbol {
@@ -24,7 +24,10 @@ impl ToString for FTraceEntry {
     fn to_string(&self) -> String {
         let indent = "  ".repeat(self.call_depth.min(32)); // Cap indentation at 32 levels
         if self.is_call {
-            format!("{}call [{}] @ 0x{:08x}", indent, self.target_name, self.target)
+            format!(
+                "{}call [{}] @ 0x{:08x}",
+                indent, self.target_name, self.target
+            )
         } else {
             format!("{}ret [{}]", indent, self.target_name)
         }
@@ -39,9 +42,11 @@ pub struct FTrace {
 
 impl FTrace {
     pub fn new() -> Self {
-        let size = if crate::generated::config::FTRACE { 
-            crate::generated::config::FTRACE_BUF as usize 
-        } else { 1 };
+        let size = if crate::generated::config::FTRACE {
+            crate::generated::config::FTRACE_BUF as usize
+        } else {
+            1
+        };
         Self {
             symbols: Vec::new(),
             call_depth: 0,
@@ -49,17 +54,21 @@ impl FTrace {
         }
     }
 
-    pub fn load_elf(&mut self, elf_file: &str, offset: u32) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn load_elf(
+        &mut self,
+        elf_file: &str,
+        offset: u32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let buffer = fs::read(elf_file)?;
         let elf = Elf::parse(&buffer)?;
-        
+
         for sym in elf.syms.iter() {
             let name = if let Some(name) = elf.strtab.get_at(sym.st_name) {
                 name
             } else {
                 continue;
             };
-            
+
             // Filter function symbols (STT_FUNC = 2)
             if sym.st_type() == 2 {
                 self.symbols.push(Symbol {
@@ -69,9 +78,13 @@ impl FTrace {
                 });
             }
         }
-        
+
         self.symbols.sort_by_key(|s| s.addr);
-        Log!("Loaded {} function symbols from {}", self.symbols.len(), elf_file);
+        Log!(
+            "Loaded {} function symbols from {}",
+            self.symbols.len(),
+            elf_file
+        );
         Ok(())
     }
 
@@ -84,16 +97,18 @@ impl FTrace {
         }
         None
     }
-    
+
     pub fn trace_call(&mut self, pc: VAddr, target: VAddr) {
-        if !crate::generated::config::FTRACE { return; }
-        
+        if !crate::generated::config::FTRACE {
+            return;
+        }
+
         let target_name = if let Some(sym) = self.find_symbol(target) {
-             sym.name.clone()
+            sym.name.clone()
         } else {
-             "???".to_string()
+            "???".to_string()
         };
-        
+
         let entry = FTraceEntry {
             pc,
             target,
@@ -101,26 +116,28 @@ impl FTrace {
             call_depth: self.call_depth,
             target_name,
         };
-        
+
         self.buf.push(entry);
-        if self.call_depth < 32{
+        if self.call_depth < 32 {
             self.call_depth += 1;
         }
     }
-    
+
     pub fn trace_ret(&mut self, pc: VAddr) {
-        if !crate::generated::config::FTRACE { return; }
-        
+        if !crate::generated::config::FTRACE {
+            return;
+        }
+
         if self.call_depth > 0 {
             self.call_depth -= 1;
         }
-        
+
         let ret_name = if let Some(sym) = self.find_symbol(pc) {
-             sym.name.clone()
+            sym.name.clone()
         } else {
-             "???".to_string()
+            "???".to_string()
         };
-        
+
         let entry = FTraceEntry {
             pc,
             target: 0,
@@ -128,12 +145,14 @@ impl FTrace {
             call_depth: self.call_depth,
             target_name: ret_name,
         };
-        
+
         self.buf.push(entry);
     }
-    
+
     pub fn show(&self) {
-        if !crate::generated::config::FTRACE { return; }
+        if !crate::generated::config::FTRACE {
+            return;
+        }
         // NEMU uses Log for header, loop for content
         crate::Log!("--- FTRACE Content ---");
         for entry in self.buf.iter() {
@@ -150,8 +169,10 @@ lazy_static::lazy_static! {
 }
 
 pub fn init_ftrace(elf_file: &str, offset: u32) {
-    if !FTRACE { return; }
-    
+    if !FTRACE {
+        return;
+    }
+
     if let Err(e) = FTRACE_INST.lock().unwrap().load_elf(elf_file, offset) {
         eprintln!("Failed to load ELF file for FTRACE: {}", e);
     }

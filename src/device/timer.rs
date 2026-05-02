@@ -1,10 +1,10 @@
 // Timer Device (RTC) and Helper
 
+use crate::common::{PAddr, Word};
 use crate::generated::config::*;
 use crate::memory::mmio::register_mmio;
-use crate::common::{PAddr, Word};
-use std::time::Instant;
 use std::sync::Mutex;
+use std::time::Instant;
 
 lazy_static::lazy_static! {
     static ref BOOT_TIME: Mutex<Option<Instant>> = Mutex::new(None);
@@ -15,9 +15,11 @@ pub fn init_timer() {
     if boot_time.is_none() {
         *boot_time = Some(Instant::now());
     }
-    
-    if !HAS_TIMER { return; }
-    
+
+    if !HAS_TIMER {
+        return;
+    }
+
     register_mmio("rtc", RTC_MMIO, 8, Box::new(rtc_callback));
 }
 

@@ -1,8 +1,8 @@
 // RISC-V32 ISA implementation
 
 pub mod decode;
-pub mod inst;
 pub mod disasm;
+pub mod inst;
 pub mod system;
 
 use crate::common::Word;
@@ -11,10 +11,8 @@ use crate::common::Word;
 
 pub fn isa_exec_once(cpu: &mut crate::cpu::state::CpuState, pc: Word) {
     // Fetch instruction
-    let inst_result = {
-        crate::memory::vaddr::vaddr_ifetch(cpu, pc, 4)
-    };
-    
+    let inst_result = { crate::memory::vaddr::vaddr_ifetch(cpu, pc, 4) };
+
     match inst_result {
         Ok(inst) => {
             // Log instruction trace
@@ -26,10 +24,10 @@ pub fn isa_exec_once(cpu: &mut crate::cpu::state::CpuState, pc: Word) {
             inst::decode_exec(cpu, inst, pc);
         }
         Err(cause) => {
-             // Raise Instruction Page Fault (12)
-             crate::utils::intr_trace::trace_intr(cause, pc, false); // Trace exception
-             let new_pc = self::system::intr::isa_raise_intr(cpu, cause, pc);
-             cpu.pc = new_pc; // Update PC to trap vector
+            // Raise Instruction Page Fault (12)
+            crate::utils::intr_trace::trace_intr(cause, pc, false); // Trace exception
+            let new_pc = self::system::intr::isa_raise_intr_with_tval(cpu, cause, pc, pc);
+            cpu.pc = new_pc; // Update PC to trap vector
         }
     }
 }

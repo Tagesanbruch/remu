@@ -10,7 +10,7 @@ pub enum InstType {
     TypeB,
     TypeU,
     TypeJ,
-    TypeN,  // none
+    TypeN, // none
 }
 
 pub struct DecodedInst {

@@ -1,18 +1,20 @@
 // Keyboard Device (i8042)
 
+use crate::common::{PAddr, Word};
 use crate::generated::config::*;
 use crate::memory::mmio::register_mmio;
-use crate::common::{PAddr, Word};
-use std::sync::Mutex;
 use std::collections::VecDeque;
+use std::sync::Mutex;
 
 lazy_static::lazy_static! {
     static ref KEY_QUEUE: Mutex<VecDeque<u32>> = Mutex::new(VecDeque::new());
 }
 
 pub fn init_keyboard() {
-    if !HAS_KEYBOARD { return; }
-    
+    if !HAS_KEYBOARD {
+        return;
+    }
+
     register_mmio("i8042", I8042_DATA_MMIO, 4, Box::new(i8042_callback));
 }
 
@@ -115,23 +117,29 @@ pub const AM_KEY_PAGEUP: u32 = 81;
 pub const AM_KEY_PAGEDOWN: u32 = 82;
 
 pub fn send_key(scancode: u32, is_keydown: bool) {
-    if !HAS_KEYBOARD { return; }
-    
+    if !HAS_KEYBOARD {
+        return;
+    }
+
     // Convert SDL scancode to AM Key Code
     // Note: REMU assumes the `scancode` here IS the AM key code for now,
-    // because mapping ~100 keys in Rust manually is tedious. 
+    // because mapping ~100 keys in Rust manually is tedious.
     // Ideally SDL scancode -> AM Key map should be here.
     // For now, let's trust caller passes AM_KEY if possible, or we implement mapping.
-    
+
     // Correction: We must implement mapping because SDL scancodes != AM keys.
     // However, to keep it simple and consistent with NEMU's behavior,
     // we will rely on sdl.rs to call us, and we'll implement the map in sdl.rs or here.
     // Let's implement a direct map here if we receive raw SDL scancodes (u32).
-    
+
     // Actually, to make it clean, let's accept AM_* keys directly.
     // The caller (sdl.rs) should map SDL -> AM.
-    
-    let am_scancode = if is_keydown { scancode | 0x8000 } else { scancode };
+
+    let am_scancode = if is_keydown {
+        scancode | 0x8000
+    } else {
+        scancode
+    };
     let mut queue = KEY_QUEUE.lock().unwrap();
     queue.push_back(am_scancode);
 }

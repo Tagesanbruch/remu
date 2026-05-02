@@ -61,7 +61,7 @@ impl<'a, T: Clone> Iterator for RingBufferIter<'a, T> {
 
         let pos = (self.buffer.head + self.index) % self.buffer.capacity.max(1);
         self.index += 1;
-        
+
         if pos < self.buffer.buffer.len() {
             Some(self.buffer.buffer[pos].clone())
         } else {

@@ -20,8 +20,12 @@ pub fn init_mmio() {
     maps.clear();
 }
 
-pub fn register_mmio(name: &str, start: PAddr, len: usize, 
-                     callback: Box<dyn Fn(PAddr, usize, bool, Word) -> Word + Send + Sync>) {
+pub fn register_mmio(
+    name: &str,
+    start: PAddr,
+    len: usize,
+    callback: Box<dyn Fn(PAddr, usize, bool, Word) -> Word + Send + Sync>,
+) {
     let mut maps = MMIO_MAPS.lock().unwrap();
     maps.push(MmioMap {
         name: name.to_string(),
@@ -29,7 +33,12 @@ pub fn register_mmio(name: &str, start: PAddr, len: usize,
         end: start + len as u32,
         callback,
     });
-    crate::Log!("Add mmio map '{}' at [0x{:08x}, 0x{:08x}]", name, start, start + len as u32 - 1);
+    crate::Log!(
+        "Add mmio map '{}' at [0x{:08x}, 0x{:08x}]",
+        name,
+        start,
+        start + len as u32 - 1
+    );
 }
 
 pub fn mmio_read(addr: PAddr, len: usize) -> Word {
@@ -41,7 +50,7 @@ pub fn mmio_read(addr: PAddr, len: usize) -> Word {
             return ret;
         }
     }
-    
+
     // Using log::error to avoid panic, consistent with previous behavior but safe
     log::error!("MMIO read: unmapped address 0x{:08x}", addr);
     0
@@ -56,6 +65,6 @@ pub fn mmio_write(addr: PAddr, len: usize, data: Word) {
             return;
         }
     }
-    
+
     log::error!("MMIO write: unmapped address 0x{:08x}", addr);
 }

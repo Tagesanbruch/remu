@@ -21,6 +21,7 @@ toml = "0.8"
 # Utilities  
 lazy_static = "1.4"
 byteorder = "1.5"
+libc = "0.2"
 
 # Optional dependencies
 sdl2 = { version = "0.37", optional = true }

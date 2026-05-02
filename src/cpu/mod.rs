@@ -1,10 +1,10 @@
 // CPU module
 
-pub mod state;
 pub mod execute;
+pub mod state;
 
-pub use state::CpuState;
 pub use execute::cpu_exec;
+pub use state::CpuState;
 
 // Initialize CPU state
 pub fn init_cpu() {

@@ -1,16 +1,16 @@
 // Physical memory implementation
 
-use crate::common::{Word, PAddr};
+use crate::common::{PAddr, Word};
 use crate::generated::config::*;
 use crate::generated::config::*;
 // use std::sync::{Arc, Mutex}; // Removed Mutex lock
 
 // Memory regions
 const MROM_BASE: u32 = 0x20000000;
-const MROM_SIZE: usize = 0x1000;  // 4KB
+const MROM_SIZE: usize = 0x1000; // 4KB
 
 const SRAM_BASE: u32 = 0x0f000000;
-const SRAM_SIZE: usize = 0x2000;  // 8KB
+const SRAM_SIZE: usize = 0x2000; // 8KB
 
 pub struct PhysicalMemory {
     pub pmem: Vec<u8>,
@@ -23,7 +23,7 @@ pub struct PhysicalMemory {
 impl PhysicalMemory {
     pub fn new(mbase: u32, msize: usize) -> Self {
         let mut pmem = vec![0u8; msize];
-        
+
         // Random initialization if configured
         if MEM_RANDOM {
             use std::time::{SystemTime, UNIX_EPOCH};
@@ -31,13 +31,13 @@ impl PhysicalMemory {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs() as u32;
-            
+
             // Simple random fill
             for i in 0..pmem.len() {
                 pmem[i] = ((seed.wrapping_mul(1103515245).wrapping_add(i as u32)) >> 8) as u8;
             }
         }
-        
+
         Self {
             pmem,
             mrom: vec![0u8; MROM_SIZE],
@@ -101,18 +101,18 @@ impl PhysicalMemory {
             if crate::generated::config::DEVICE {
                 return crate::memory::mmio::mmio_read(addr, len);
             }
-            
+
             log::error!("Address 0x{:08x} is out of bound", addr);
             0
         };
-        
+
         crate::utils::mtrace::trace_read(addr, len, ret);
         ret
     }
 
     pub fn write(&mut self, addr: PAddr, len: usize, data: Word) {
         crate::utils::mtrace::trace_write(addr, len, data);
-        
+
         if let Some(ptr) = self.guest_to_host(addr) {
             unsafe {
                 match len {
@@ -154,7 +154,7 @@ pub fn paddr_read(addr: PAddr, len: usize) -> Word {
     unsafe {
         match &PMEM {
             Some(pmem) => pmem.read(addr, len),
-             None => {
+            None => {
                 panic!("Physical memory not initialized");
             }
         }
@@ -180,7 +180,10 @@ pub fn load_image(data: &[u8], addr: PAddr) -> Result<(), String> {
                 std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
                 Ok(())
             } else {
-                Err(format!("Cannot load image at invalid address 0x{:08x}", addr))
+                Err(format!(
+                    "Cannot load image at invalid address 0x{:08x}",
+                    addr
+                ))
             }
         } else {
             Err("Physical memory not initialized".to_string())

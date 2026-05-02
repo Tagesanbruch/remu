@@ -5,10 +5,9 @@ use crate::common::Word;
 
 /// Register ABI names
 const REG_NAMES: [&str; 32] = [
-    "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
-    "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
-    "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
-    "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6",
+    "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3", "a4",
+    "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4",
+    "t5", "t6",
 ];
 
 #[inline]
@@ -29,16 +28,16 @@ pub fn disasm(inst: Word, _pc: Word) -> String {
     let imm_i = ((inst as i32) >> 20) as i32;
     let imm_s = (((inst >> 25) << 5) | ((inst >> 7) & 0x1f)) as i32;
     let imm_s = (imm_s << 20) >> 20; // Sign extend
-    let imm_b = ((((inst >> 31) & 1) << 12) |
-                 (((inst >> 7) & 1) << 11) |
-                 (((inst >> 25) & 0x3f) << 5) |
-                 (((inst >> 8) & 0xf) << 1)) as i32;
+    let imm_b = ((((inst >> 31) & 1) << 12)
+        | (((inst >> 7) & 1) << 11)
+        | (((inst >> 25) & 0x3f) << 5)
+        | (((inst >> 8) & 0xf) << 1)) as i32;
     let imm_b = (imm_b << 19) >> 19; // Sign extend
     let imm_u = (inst & 0xfffff000) as i32;
-    let imm_j = ((((inst >> 31) & 1) << 20) |
-                 (((inst >> 12) & 0xff) << 12) |
-                 (((inst >> 20) & 1) << 11) |
-                 (((inst >> 21) & 0x3ff) << 1)) as i32;
+    let imm_j = ((((inst >> 31) & 1) << 20)
+        | (((inst >> 12) & 0xff) << 12)
+        | (((inst >> 20) & 1) << 11)
+        | (((inst >> 21) & 0x3ff) << 1)) as i32;
     let imm_j = (imm_j << 11) >> 11; // Sign extend
 
     match opcode {
@@ -68,7 +67,13 @@ pub fn disasm(inst: Word, _pc: Word) -> String {
                 0b111 => "bgeu",
                 _ => "unknown",
             };
-            format!("{}\t{}, {}, {:#x}", mnem, reg_name(rs1), reg_name(rs2), imm_b)
+            format!(
+                "{}\t{}, {}, {:#x}",
+                mnem,
+                reg_name(rs1),
+                reg_name(rs2),
+                imm_b
+            )
         }
         0b0000011 => {
             let mnem = match funct3 {
@@ -79,7 +84,13 @@ pub fn disasm(inst: Word, _pc: Word) -> String {
                 0b101 => "lhu",
                 _ => "unknown",
             };
-            format!("{}\t{}, {:#x}({})", mnem, reg_name(rd), imm_i, reg_name(rs1))
+            format!(
+                "{}\t{}, {:#x}({})",
+                mnem,
+                reg_name(rd),
+                imm_i,
+                reg_name(rs1)
+            )
         }
         0b0100011 => {
             let mnem = match funct3 {
@@ -88,7 +99,13 @@ pub fn disasm(inst: Word, _pc: Word) -> String {
                 0b010 => "sw",
                 _ => "unknown",
             };
-            format!("{}\t{}, {:#x}({})", mnem, reg_name(rs2), imm_s, reg_name(rs1))
+            format!(
+                "{}\t{}, {:#x}({})",
+                mnem,
+                reg_name(rs2),
+                imm_s,
+                reg_name(rs1)
+            )
         }
         0b0010011 => {
             let shamt = rs2;
@@ -133,7 +150,13 @@ pub fn disasm(inst: Word, _pc: Word) -> String {
                 (0b0000001, 0b111) => "remu",
                 _ => "unknown",
             };
-            format!("{}\t{}, {}, {}", mnem, reg_name(rd), reg_name(rs1), reg_name(rs2))
+            format!(
+                "{}\t{}, {}, {}",
+                mnem,
+                reg_name(rd),
+                reg_name(rs1),
+                reg_name(rs2)
+            )
         }
         0b0001111 => "fence".to_string(),
         0b1110011 => {
@@ -187,7 +210,13 @@ pub fn disasm(inst: Word, _pc: Word) -> String {
             if funct5 == 0b00010 {
                 format!("{}\t{}, ({})", mnem, reg_name(rd), reg_name(rs1))
             } else {
-                format!("{}\t{}, {}, ({})", mnem, reg_name(rd), reg_name(rs2), reg_name(rs1))
+                format!(
+                    "{}\t{}, {}, ({})",
+                    mnem,
+                    reg_name(rd),
+                    reg_name(rs2),
+                    reg_name(rs1)
+                )
             }
         }
         _ => format!("unknown {:#x}", inst),

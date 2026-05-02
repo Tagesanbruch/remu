@@ -3,8 +3,8 @@ use std::process;
 // Common types and utilities
 pub mod common;
 pub mod config;
-pub mod utils;
 pub mod generated;
+pub mod utils;
 
 pub mod cpu;
 pub mod device;
@@ -32,9 +32,14 @@ fn main() {
     std::fs::create_dir_all("build").ok();
     crate::utils::log::init_log(log_file);
     crate::utils::log::init_panic_hook();
-    
+
     Log!("REMU starting...");
-    
+
+    if config.no_display {
+        std::env::set_var("REMU_NO_DISPLAY", "1");
+    }
+    crate::device::serial::set_stdin_enabled(config.batch);
+
     // Initialize monitor (memory, devices, ISA)
     monitor::init_monitor(&config);
 
@@ -43,7 +48,8 @@ fn main() {
         crate::cpu::execute::statistic();
         crate::device::sdl::quit();
         std::process::exit(0);
-    }).expect("Error setting Ctrl-C handler");
+    })
+    .expect("Error setting Ctrl-C handler");
 
     // Start the engine (debugger or batch mode)
     engine::start(&config);
