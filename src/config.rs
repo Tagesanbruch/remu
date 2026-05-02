@@ -11,6 +11,10 @@ pub struct Config {
     #[arg(short = 'b', long = "batch")]
     pub batch: bool,
 
+    /// Run without opening an SDL display window
+    #[arg(long = "no-display")]
+    pub no_display: bool,
+
     /// Log file path (default: build/remu-log.txt)
     #[arg(short = 'l', long = "log", value_name = "FILE")]
     pub log_file: Option<String>,
@@ -20,7 +24,12 @@ pub struct Config {
     pub diff_so: Option<String>,
 
     /// Difftest port number (default: 1234)
-    #[arg(short = 'p', long = "port", value_name = "PORT", default_value = "1234")]
+    #[arg(
+        short = 'p',
+        long = "port",
+        value_name = "PORT",
+        default_value = "1234"
+    )]
     pub difftest_port: u16,
 
     /// ELF file for symbol loading (function tracing)
@@ -30,6 +39,15 @@ pub struct Config {
     /// ELF symbol offset (e.g. 0x400000)
     #[arg(long = "elf-offset", value_name = "OFFSET", default_value = "0")]
     pub elf_offset: String,
+
+    /// Execute an SDB command before entering batch/interactive execution.
+    /// Can be passed multiple times.
+    #[arg(long = "sdb-cmd", value_name = "CMD", action = clap::ArgAction::Append)]
+    pub sdb_cmd: Vec<String>,
+
+    /// Execute SDB commands from a file before entering batch/interactive execution.
+    #[arg(long = "sdb-script", value_name = "FILE")]
+    pub sdb_script: Option<std::path::PathBuf>,
 
     /// Image file to load (positional argument)
     #[arg(value_name = "IMAGE")]
@@ -46,29 +64,29 @@ pub struct RuntimeConfig {
     pub msize: u32,
     pub pc_reset_offset: u32,
     pub mem_random: bool,
-    
+
     pub trace_start: u64,
     pub trace_end: u64,
-    
+
     pub has_serial: bool,
     pub serial_mmio: u32,
-    
+
     pub has_timer: bool,
     pub rtc_mmio: u32,
-    
+
     pub has_keyboard: bool,
     pub keyboard_mmio: u32,
-    
+
     pub has_vga: bool,
     pub fb_addr: u32,
     pub vgactl_mmio: u32,
-    
+
     pub has_audio: bool,
     pub audio_addr: u32,
-    
+
     pub has_disk: bool,
     pub disk_mmio: u32,
-    
+
     pub has_clint: bool,
     pub has_plic: bool,
 }
@@ -80,29 +98,29 @@ impl Default for RuntimeConfig {
             msize: MSIZE,
             pc_reset_offset: PC_RESET_OFFSET,
             mem_random: MEM_RANDOM,
-            
+
             trace_start: TRACE_START,
             trace_end: TRACE_END,
-            
+
             has_serial: HAS_SERIAL,
             serial_mmio: SERIAL_MMIO,
-            
+
             has_timer: HAS_TIMER,
             rtc_mmio: RTC_MMIO,
-            
+
             has_keyboard: HAS_KEYBOARD,
             keyboard_mmio: I8042_DATA_MMIO,
-            
+
             has_vga: HAS_VGA,
             fb_addr: FB_ADDR,
             vgactl_mmio: VGA_CTL_MMIO,
-            
+
             has_audio: HAS_AUDIO,
             audio_addr: SB_ADDR,
-            
+
             has_disk: HAS_DISK,
             disk_mmio: DISK_CTL_MMIO,
-            
+
             has_clint: HAS_CLINT,
             has_plic: HAS_PLIC,
         }

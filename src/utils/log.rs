@@ -2,10 +2,10 @@
 // Format: [src/module/file.rs:line function_name] message
 // Log messages are in BLUE color
 
-use std::sync::Mutex;
+use lazy_static::lazy_static;
 use std::fs::File;
 use std::io::Write;
-use lazy_static::lazy_static;
+use std::sync::Mutex;
 
 // ANSI color codes (matching C NEMU)
 pub const ANSI_NONE: &str = "\x1b[0m";
@@ -41,7 +41,12 @@ lazy_static! {
 pub fn init_log(logfile: &str) {
     let file = File::create(logfile).expect("Failed to create log file");
     *LOG_FILE.lock().unwrap() = Some(file);
-    _log(file!(), line!(), "", &format!("Log is written to {}", logfile));
+    _log(
+        file!(),
+        line!(),
+        "",
+        &format!("Log is written to {}", logfile),
+    );
 }
 
 pub fn init_panic_hook() {
@@ -51,8 +56,8 @@ pub fn init_panic_hook() {
         // Need to access super::print_trace_summary, but log.rs is a module.
         // We can't easily call across crates if not public, but here same crate.
         // remu::utils::print_trace_summary()
-        crate::utils::print_trace_summary();
-        
+        crate::utils::print_trace_summary(None);
+
         default_hook(info);
     }));
 }
@@ -60,18 +65,22 @@ pub fn init_panic_hook() {
 pub fn _log(file: &str, line: u32, func: &str, message: &str) {
     // Extract filename from full path
     let filename = file.split('/').last().unwrap_or(file);
-    
+
     // Format: [src/file.rs:line function] message (in BLUE)
     let log_msg = if func.is_empty() {
-        format!("{}[{}:{}] {}{}\n",
-            ANSI_FG_BLUE, filename, line, message, ANSI_NONE)
+        format!(
+            "{}[{}:{}] {}{}\n",
+            ANSI_FG_BLUE, filename, line, message, ANSI_NONE
+        )
     } else {
-        format!("{}[{}:{} {}] {}{}\n",
-            ANSI_FG_BLUE, filename, line, func, message, ANSI_NONE)
+        format!(
+            "{}[{}:{} {}] {}{}\n",
+            ANSI_FG_BLUE, filename, line, func, message, ANSI_NONE
+        )
     };
-    
+
     print!("{}", log_msg);
-    
+
     // Also write to log file (without colors)
     if let Some(ref mut file) = *LOG_FILE.lock().unwrap() {
         let plain_msg = if func.is_empty() {

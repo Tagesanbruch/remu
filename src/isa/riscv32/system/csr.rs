@@ -1,7 +1,6 @@
 use crate::common::Word;
 use crate::cpu::state::CPU;
 
-
 // CSR Indexes (matching local-include/reg.h and NEMU)
 pub const CSR_MTVEC: u16 = 0x305;
 pub const CSR_MEPC: u16 = 0x341;
@@ -33,17 +32,18 @@ pub fn isa_csr_read(cpu: &crate::cpu::state::CpuState, addr: u16) -> Word {
             mstatus & 0x800DE162 // Mask S-mode visible bits
         }
         CSR_SIE => cpu.csr[CSR_MIE as usize] & cpu.csr[CSR_MIDELEG as usize],
-        CSR_SIP => cpu.csr[CSR_MIP as usize] & cpu.csr[CSR_MIDELEG as usize],
+        CSR_SIP => dynamic_mip(cpu) & cpu.csr[CSR_MIDELEG as usize],
+        CSR_MIP => dynamic_mip(cpu),
         CSR_TIME => {
             let t = crate::device::timer::get_time_u32(0);
             // crate::Log!("CSR: Read TIME -> {}", t);
             t
-        },
+        }
         CSR_TIMEH => {
             let t = crate::device::timer::get_time_u32(1);
             // crate::Log!("CSR: Read TIMEH -> {}", t);
             t
-        },
+        }
         _ => {
             if (addr as usize) < cpu.csr.len() {
                 cpu.csr[addr as usize]
@@ -54,24 +54,30 @@ pub fn isa_csr_read(cpu: &crate::cpu::state::CpuState, addr: u16) -> Word {
     }
 }
 
+fn dynamic_mip(cpu: &crate::cpu::state::CpuState) -> Word {
+    cpu.csr[CSR_MIP as usize]
+        | crate::device::clint::get_mip_status()
+        | crate::device::intr::get_intr_state()
+}
+
 pub fn isa_csr_write(cpu: &mut crate::cpu::state::CpuState, addr: u16, data: Word) {
     match addr {
-       CSR_SSTATUS => {
-           // Write to MSTATUS alias
-           let mask = 0x800DE162; // S-mode writable bits
-           let old = cpu.csr[CSR_MSTATUS as usize];
-           cpu.csr[CSR_MSTATUS as usize] = (old & !mask) | (data & mask);
-       }
-       CSR_SIE => {
-           let mask = cpu.csr[CSR_MIDELEG as usize];
-           let old = cpu.csr[CSR_MIE as usize];
-           cpu.csr[CSR_MIE as usize] = (old & !mask) | (data & mask);
-       }
-       CSR_SIP => {
-           let mask = cpu.csr[CSR_MIDELEG as usize] & 0x00000002; // Only SSIP is writable in SIP?
-           let old = cpu.csr[CSR_MIP as usize];
-           cpu.csr[CSR_MIP as usize] = (old & !mask) | (data & mask);
-       }
+        CSR_SSTATUS => {
+            // Write to MSTATUS alias
+            let mask = 0x800DE162; // S-mode writable bits
+            let old = cpu.csr[CSR_MSTATUS as usize];
+            cpu.csr[CSR_MSTATUS as usize] = (old & !mask) | (data & mask);
+        }
+        CSR_SIE => {
+            let mask = cpu.csr[CSR_MIDELEG as usize];
+            let old = cpu.csr[CSR_MIE as usize];
+            cpu.csr[CSR_MIE as usize] = (old & !mask) | (data & mask);
+        }
+        CSR_SIP => {
+            let mask = cpu.csr[CSR_MIDELEG as usize] & 0x00000002; // Only SSIP is writable in SIP?
+            let old = cpu.csr[CSR_MIP as usize];
+            cpu.csr[CSR_MIP as usize] = (old & !mask) | (data & mask);
+        }
         _ => {
             if (addr as usize) < cpu.csr.len() {
                 cpu.csr[addr as usize] = data;
