@@ -8,7 +8,7 @@ use std::fs;
 pub struct Symbol {
     pub name: String,
     pub addr: VAddr,
-    pub size: u32,
+    pub size: VAddr,
 }
 
 #[derive(Clone)]
@@ -57,7 +57,7 @@ impl FTrace {
     pub fn load_elf(
         &mut self,
         elf_file: &str,
-        offset: u32,
+        offset: VAddr,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let buffer = fs::read(elf_file)?;
         let elf = Elf::parse(&buffer)?;
@@ -73,8 +73,8 @@ impl FTrace {
             if sym.st_type() == 2 {
                 self.symbols.push(Symbol {
                     name: name.to_string(),
-                    addr: (sym.st_value as u32).wrapping_add(offset),
-                    size: sym.st_size as u32,
+                    addr: (sym.st_value as VAddr).wrapping_add(offset),
+                    size: sym.st_size as VAddr,
                 });
             }
         }
@@ -168,7 +168,7 @@ lazy_static::lazy_static! {
     };
 }
 
-pub fn init_ftrace(elf_file: &str, offset: u32) {
+pub fn init_ftrace(elf_file: &str, offset: VAddr) {
     if !FTRACE {
         return;
     }

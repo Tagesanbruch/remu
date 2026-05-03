@@ -4,6 +4,15 @@ config RV64
   bool "64-bit RISC-V architecture"
   default n
 
+config TLB
+  bool "Enable split I/D TLB"
+  default y
+
+config TLB_ENTRIES
+  depends on TLB
+  int "Entries per split TLB"
+  default 64
+
 config RVE
   bool "Use E extension"
   default n
