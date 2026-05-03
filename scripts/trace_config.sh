@@ -8,8 +8,8 @@ Usage: scripts/trace_config.sh MODE
 MODE:
   off    Disable REMU trace buffers.
   light  Enable instruction/interrupt/ecall ring buffers.
-  mmu    Enable interrupt/ecall/MMU ring buffers.
-  full   Enable instruction/memory/device/function/interrupt/ecall/MMU buffers.
+  mmu    Enable interrupt/ecall/MMU/TLB ring buffers.
+  full   Enable instruction/memory/device/function/interrupt/ecall/MMU/TLB buffers.
 
 After updating .config, this regenerates src/generated/config.rs.
 USAGE
@@ -65,6 +65,7 @@ disable_trace_detail() {
   unset_config DTRACE
   unset_config TRACE_INTR
   unset_config TRACE_MMU
+  unset_config TRACE_TLB
   unset_config TRACE_PLIC
   unset_config TRACE_ECALL
   set_config ITRACE_RINGBUF 0
@@ -73,6 +74,7 @@ disable_trace_detail() {
   set_config DTRACE_RINGBUF 0
   set_config TRACE_INTR_RINGBUF 0
   set_config TRACE_MMU_RINGBUF 0
+  set_config TRACE_TLB_RINGBUF 0
   set_config TRACE_ECALL_RINGBUF 0
 }
 
@@ -103,6 +105,8 @@ case "$mode" in
     set_config TRACE_ECALL_RINGBUF 256
     set_config TRACE_MMU y
     set_config TRACE_MMU_RINGBUF 1024
+    set_config TRACE_TLB y
+    set_config TRACE_TLB_RINGBUF 512
     ;;
   full)
     set_config TRACE y
@@ -126,6 +130,8 @@ case "$mode" in
     set_config TRACE_ECALL_RINGBUF 256
     set_config TRACE_MMU y
     set_config TRACE_MMU_RINGBUF 1024
+    set_config TRACE_TLB y
+    set_config TRACE_TLB_RINGBUF 512
     ;;
   *)
     echo "Unknown trace mode: $mode" >&2

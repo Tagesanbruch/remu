@@ -151,7 +151,7 @@ fn handle_command(cmd: &str) -> bool {
             println!("  info pc          - Print PC and privilege mode");
             println!("  info r           - Print registers");
             println!("  info csr         - Print common CSRs");
-            println!("  trace [KIND]     - Dump trace ring buffers (all/itrace/dtrace/intr/mmu/ecall/ftrace)");
+            println!("  trace [KIND]     - Dump trace ring buffers (all/itrace/dtrace/intr/mmu/tlb/ecall/ftrace)");
             println!("  help             - Show this help");
         }
         _ => {
@@ -162,15 +162,19 @@ fn handle_command(cmd: &str) -> bool {
     true
 }
 
-fn parse_u32(value: &str) -> Option<u32> {
+fn parse_u64(value: &str) -> Option<u64> {
     if let Some(hex) = value
         .strip_prefix("0x")
         .or_else(|| value.strip_prefix("0X"))
     {
-        u32::from_str_radix(hex, 16).ok()
+        u64::from_str_radix(hex, 16).ok()
     } else {
         value.parse().ok()
     }
+}
+
+fn parse_u32(value: &str) -> Option<u32> {
+    parse_u64(value).and_then(|value| u32::try_from(value).ok())
 }
 
 fn inspect_vaddr(parts: &[&str]) {
@@ -183,14 +187,14 @@ fn inspect_vaddr(parts: &[&str]) {
         println!("Invalid count: {}", parts[1]);
         return;
     };
-    let Some(addr) = parse_u32(parts[2]) else {
+    let Some(addr) = parse_u64(parts[2]) else {
         println!("Invalid address: {}", parts[2]);
         return;
     };
 
     let cpu = crate::cpu::state::CPU.lock().unwrap();
     for i in 0..count {
-        let cur = addr.wrapping_add(i.wrapping_mul(4));
+        let cur = addr.wrapping_add(u64::from(i).wrapping_mul(4));
         match crate::memory::vaddr::vaddr_read(&cpu, cur, 4) {
             Ok(data) => println!("0x{:08x}: 0x{:08x}", cur, data),
             Err(cause) => {
@@ -211,13 +215,13 @@ fn inspect_paddr(parts: &[&str]) {
         println!("Invalid count: {}", parts[1]);
         return;
     };
-    let Some(addr) = parse_u32(parts[2]) else {
+    let Some(addr) = parse_u64(parts[2]) else {
         println!("Invalid address: {}", parts[2]);
         return;
     };
 
     for i in 0..count {
-        let cur = addr.wrapping_add(i.wrapping_mul(4));
+        let cur = addr.wrapping_add(u64::from(i).wrapping_mul(4));
         let data = crate::memory::paddr::paddr_read(cur, 4);
         println!("0x{:08x}: 0x{:08x}", cur, data);
     }

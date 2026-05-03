@@ -37,12 +37,12 @@ pub fn isa_csr_read(cpu: &crate::cpu::state::CpuState, addr: u16) -> Word {
         CSR_TIME => {
             let t = crate::device::timer::get_time_u32(0);
             // crate::Log!("CSR: Read TIME -> {}", t);
-            t
+            t as Word
         }
         CSR_TIMEH => {
             let t = crate::device::timer::get_time_u32(1);
             // crate::Log!("CSR: Read TIMEH -> {}", t);
-            t
+            t as Word
         }
         _ => {
             if (addr as usize) < cpu.csr.len() {
@@ -57,7 +57,7 @@ pub fn isa_csr_read(cpu: &crate::cpu::state::CpuState, addr: u16) -> Word {
 fn dynamic_mip(cpu: &crate::cpu::state::CpuState) -> Word {
     cpu.csr[CSR_MIP as usize]
         | crate::device::clint::get_mip_status()
-        | crate::device::intr::get_intr_state()
+        | crate::device::intr::get_intr_state() as Word
 }
 
 pub fn isa_csr_write(cpu: &mut crate::cpu::state::CpuState, addr: u16, data: Word) {
@@ -77,6 +77,12 @@ pub fn isa_csr_write(cpu: &mut crate::cpu::state::CpuState, addr: u16, data: Wor
             let mask = cpu.csr[CSR_MIDELEG as usize] & 0x00000002; // Only SSIP is writable in SIP?
             let old = cpu.csr[CSR_MIP as usize];
             cpu.csr[CSR_MIP as usize] = (old & !mask) | (data & mask);
+        }
+        CSR_SATP => {
+            if cpu.csr[CSR_SATP as usize] != data {
+                super::mmu::flush_tlb();
+            }
+            cpu.csr[CSR_SATP as usize] = data;
         }
         _ => {
             if (addr as usize) < cpu.csr.len() {

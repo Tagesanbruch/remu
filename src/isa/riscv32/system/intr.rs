@@ -1,6 +1,13 @@
 use super::csr::*;
 use crate::common::{PrivMode, Word};
-use crate::cpu::state::CPU;
+
+fn interrupt_bit() -> Word {
+    1 << (crate::common::xlen() - 1)
+}
+
+fn interrupt_cause(code: Word) -> Word {
+    interrupt_bit() | code
+}
 
 // Interrupt/Exception checking
 // Interrupt/Exception checking
@@ -10,7 +17,7 @@ pub fn isa_query_intr(cpu: &crate::cpu::state::CpuState) -> Word {
     let mie_reg = cpu.csr[CSR_MIE as usize];
     // Include CLINT interrupts dynamically
     let clint_mip = crate::device::clint::get_mip_status();
-    let ext_mip = crate::device::intr::get_intr_state();
+    let ext_mip = crate::device::intr::get_intr_state() as Word;
     let mip_reg = cpu.csr[CSR_MIP as usize] | clint_mip | ext_mip;
 
     let mode = cpu.mode as u32; // 3=M, 1=S, 0=U
@@ -23,13 +30,13 @@ pub fn isa_query_intr(cpu: &crate::cpu::state::CpuState) -> Word {
         // Prioritize: MEIP(11) > MTIP(7) > MSIP(3)
         // Note: bit flags check
         if (mip_reg & (1 << 11)) != 0 && (mie_reg & (1 << 11)) != 0 {
-            return 0x80000000 | 11;
+            return interrupt_cause(11);
         }
         if (mip_reg & (1 << 7)) != 0 && (mie_reg & (1 << 7)) != 0 {
-            return 0x80000000 | 7;
+            return interrupt_cause(7);
         }
         if (mip_reg & (1 << 3)) != 0 && (mie_reg & (1 << 3)) != 0 {
-            return 0x80000000 | 3;
+            return interrupt_cause(3);
         }
     }
 
@@ -42,13 +49,13 @@ pub fn isa_query_intr(cpu: &crate::cpu::state::CpuState) -> Word {
         let pending = mip_reg & mie_reg & mideleg;
 
         if (pending & (1 << 9)) != 0 {
-            return 0x80000000 | 9;
+            return interrupt_cause(9);
         } // SEIP
         if (pending & (1 << 5)) != 0 {
-            return 0x80000000 | 5;
+            return interrupt_cause(5);
         } // STIP
         if (pending & (1 << 1)) != 0 {
-            return 0x80000000 | 1;
+            return interrupt_cause(1);
         } // SSIP
     }
 
@@ -65,8 +72,9 @@ pub fn isa_raise_intr_with_tval(
     epc: Word,
     tval: Word,
 ) -> Word {
-    let is_intr = (no & 0x80000000) != 0;
-    let cause_code = no & 0x7FFFFFFF;
+    let intr_bit = interrupt_bit();
+    let is_intr = (no & intr_bit) != 0;
+    let cause_code = no & !intr_bit;
 
     // Delegation check
     let deleg_reg = if is_intr {
