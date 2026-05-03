@@ -22,7 +22,7 @@ pub fn init_monitor(cfg: &Config) {
 
     // Initialize FTRACE
     if let Some(elf_file) = &cfg.elf_file {
-        let offset = u32::from_str_radix(cfg.elf_offset.trim_start_matches("0x"), 16).unwrap_or(0);
+        let offset = u64::from_str_radix(cfg.elf_offset.trim_start_matches("0x"), 16).unwrap_or(0);
         crate::utils::ftrace::init_ftrace(elf_file, offset);
     }
 
@@ -118,7 +118,10 @@ fn welcome() {
     // Print welcome message (not logged to file, direct to stdout)
     println!(
         "Welcome to {}{}{}{}-REMU!",
-        ANSI_FG_YELLOW, ANSI_BG_RED, "riscv32", ANSI_NONE
+        ANSI_FG_YELLOW,
+        ANSI_BG_RED,
+        crate::generated::config::ISA,
+        ANSI_NONE
     );
     println!("For help, type \"help\"");
 }

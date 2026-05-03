@@ -15,7 +15,12 @@ pub fn init_keyboard() {
         return;
     }
 
-    register_mmio("i8042", I8042_DATA_MMIO, 4, Box::new(i8042_callback));
+    register_mmio(
+        "i8042",
+        I8042_DATA_MMIO as PAddr,
+        4,
+        Box::new(i8042_callback),
+    );
 }
 
 fn i8042_callback(_addr: PAddr, _len: usize, is_write: bool, _data: Word) -> Word {
@@ -24,7 +29,7 @@ fn i8042_callback(_addr: PAddr, _len: usize, is_write: bool, _data: Word) -> Wor
     } else {
         let mut queue = KEY_QUEUE.lock().unwrap();
         if let Some(am_scancode) = queue.pop_front() {
-            am_scancode
+            am_scancode as Word
         } else {
             0
         }

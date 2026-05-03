@@ -1,11 +1,11 @@
 // Global emulator state
 
-use crate::common::RemuState;
+use crate::common::{RemuState, Word};
 use std::sync::{Arc, Mutex};
 
 pub struct GlobalState {
     pub state: RemuState,
-    pub halt_pc: u32,
+    pub halt_pc: Word,
     pub halt_ret: i32,
 }
 
@@ -38,7 +38,7 @@ pub fn set_state(state: RemuState) {
     REMU_STATE.lock().unwrap().state = state;
 }
 
-pub fn set_halt(pc: u32, ret: i32) {
+pub fn set_halt(pc: Word, ret: i32) {
     let mut state = REMU_STATE.lock().unwrap();
     state.halt_pc = pc;
     state.halt_ret = ret;

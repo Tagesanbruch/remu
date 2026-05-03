@@ -137,7 +137,7 @@ pub fn set_irq_level(source: u32, level: bool) {
 }
 
 fn plic_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
-    let offset = addr - PLIC_BASE;
+    let offset = (addr - PLIC_BASE) as u32;
     let mut state = PLIC.lock().unwrap();
 
     if is_write {
@@ -154,9 +154,9 @@ fn plic_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
         if let Some((context, reg)) = context_reg(offset) {
             if context < CONTEXTS {
                 if reg == 0 {
-                    state.threshold[context] = data;
+                    state.threshold[context] = data as u32;
                 } else if reg == CLAIM_COMPLETE {
-                    state.complete(data);
+                    state.complete(data as u32);
                 }
                 refresh_external_irq_locked(&state);
                 return 0;
@@ -169,7 +169,7 @@ fn plic_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
         let ret = if offset >= PRIORITY_BASE && offset < PENDING_BASE && (offset & 0x3) == 0 {
             let source = (offset / 4) as usize;
             if source < MAX_SOURCE {
-                state.priority[source]
+                state.priority[source] as Word
             } else {
                 0
             }
@@ -180,9 +180,9 @@ fn plic_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
         } else if let Some((context, reg)) = context_reg(offset) {
             if context < CONTEXTS {
                 if reg == 0 {
-                    state.threshold[context]
+                    state.threshold[context] as Word
                 } else if reg == CLAIM_COMPLETE {
-                    state.claim(context)
+                    state.claim(context) as Word
                 } else {
                     0
                 }
@@ -213,7 +213,7 @@ fn write_priority(state: &mut PlicState, offset: u32, data: Word) -> bool {
 
     let source = (offset / 4) as usize;
     if source < MAX_SOURCE {
-        state.priority[source] = data & 0x7;
+        state.priority[source] = (data & 0x7) as u32;
     }
     true
 }

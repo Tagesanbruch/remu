@@ -1,16 +1,17 @@
 // CPU state structure
 
-use crate::common::{PrivMode, Word};
+use crate::common::{mask_xlen, PrivMode, Word};
 use crate::config::RuntimeConfig;
 use std::sync::{Arc, Mutex};
 
 pub struct CpuState {
-    pub pc: u32,
+    pub pc: Word,
     pub gpr: [Word; 32],
+    pub fpr: [u64; 32],
     pub csr: [Word; 4096],
     pub mode: PrivMode,
     pub is_exception: bool,
-    pub exception_entry: u32,
+    pub exception_entry: Word,
 }
 
 impl CpuState {
@@ -18,6 +19,7 @@ impl CpuState {
         Self {
             pc: 0,
             gpr: [0; 32],
+            fpr: [0; 32],
             csr: [0; 4096],
             mode: PrivMode::Machine,
             is_exception: false,
@@ -32,6 +34,7 @@ impl CpuState {
 
         // Zero all GPRs
         self.gpr = [0; 32];
+        self.fpr = [0; 32];
 
         // Initialize key CSRs
         self.init_csr();
@@ -46,8 +49,20 @@ impl CpuState {
         // mstatus
         self.csr[0x300] = 0x1800; // MPP=11 (Machine)
 
-        // misa: MXL=1 (32-bit), Extensions: I(8), M(12), A(0), S(18)
-        let misa = (1 << 30) | (1 << 0) | (1 << 8) | (1 << 12) | (1 << 18);
+        // misa: MXL plus I/M/A/S/C/F/D.  F/D currently supports raw register loads/stores.
+        let mxl = if crate::generated::config::RV64 {
+            2_u64 << 62
+        } else {
+            1_u64 << 30
+        };
+        let misa = mxl
+            | (1 << 0)  // A
+            | (1 << 2)  // C
+            | (1 << 3)  // D
+            | (1 << 5)  // F
+            | (1 << 8)  // I
+            | (1 << 12) // M
+            | (1 << 18); // S
         self.csr[0x301] = misa;
     }
 
@@ -61,7 +76,7 @@ impl CpuState {
 
     pub fn set_gpr(&mut self, idx: usize, val: Word) {
         if idx != 0 {
-            self.gpr[idx] = val;
+            self.gpr[idx] = mask_xlen(val);
         }
     }
 

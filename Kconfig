@@ -228,6 +228,16 @@ config TRACE_MMU_RINGBUF
   int "MMU tracing buf size"
   default 32
 
+config TRACE_TLB
+  depends on TRACE
+  bool "Enable TLB tracer"
+  default n
+
+config TRACE_TLB_RINGBUF
+  depends on TRACE_TLB
+  int "TLB tracing buf size"
+  default 32
+
 config TRACE_PLIC
   depends on TRACE
   bool "Enable PLIC tracer"

@@ -1,6 +1,6 @@
 // CPU execution loop
 
-use crate::common::RemuState;
+use crate::common::{RemuState, Word};
 use crate::cpu::state::{CpuState, CPU};
 use crate::isa::riscv32;
 use crate::utils::{get_state, set_state};
@@ -57,7 +57,7 @@ fn execute(n: u64) {
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
     let mut user_inst_count = 0_u64;
-    let mut last_user_pc = 0_u32;
+    let mut last_user_pc = 0 as Word;
 
     for i in 0..n {
         // 目前每执行 1024 条指令检查一次中断

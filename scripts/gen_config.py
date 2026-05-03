@@ -11,6 +11,10 @@ from pathlib import Path
 
 # Default configuration values for known keys
 DEFAULT_CONFIGS = {
+    "ISA_riscv": "y",
+    "ISA_loongarch32r": "n",
+    "ISA": '"riscv32"',
+    "ISA64": "n",
     "TRACE": "n",
     "TRACE_START": "0",
     "TRACE_END": "0",
@@ -27,14 +31,22 @@ DEFAULT_CONFIGS = {
     "DTRACE_COND": '"false"',
     "DTRACE_RINGBUF": "0",
     "TRACE_INTR": "n",
-    "TRACE_INTR_RINGBUF": "0",
+    "TRACE_INTR_RINGBUF": "32",
     "TRACE_MMU": "n",
-    "TRACE_MMU_RINGBUF": "0",
+    "TRACE_MMU_RINGBUF": "32",
+    "TRACE_TLB": "n",
+    "TRACE_TLB_RINGBUF": "32",
     "TRACE_PLIC": "n",
     "TRACE_PLIC_COND": '"false"',
     "TRACE_ECALL": "n",
     "TRACE_ECALL_RINGBUF": "0",
     "DEVICE": "n",
+    "MBASE": "0x80000000",
+    "MSIZE": "0x8000000",
+    "PC_RESET_OFFSET": "0",
+    "PMEM_MALLOC": "n",
+    "PMEM_GARRAY": "y",
+    "MEM_RANDOM": "n",
     "HAS_VGA": "n",
     "VGA_SHOW_SCREEN": "n",
     "VGA_WIDTH": "400",
@@ -60,6 +72,9 @@ DEFAULT_CONFIGS = {
     "RT_CHECK": "n",
     "WATCHPOINT": "n",
     "EVAL_DEBUG": "n",
+    "RV64": "n",
+    "TLB": "y",
+    "TLB_ENTRIES": "64",
 }
 
 def parse_config(config_file):
@@ -151,13 +166,24 @@ def generate_rust_code(configs):
     
     return '\n'.join(lines) + '\n'
 
+def apply_derived_configs(configs):
+    """Fill derived Kconfig-style values used by Rust when reading a partial config."""
+    if configs.get("ISA_riscv") == "y":
+        rv64 = configs.get("RV64") == "y"
+        configs["ISA"] = '"riscv64"' if rv64 else '"riscv32"'
+        configs["ISA64"] = "y" if rv64 else "n"
+    elif configs.get("ISA_loongarch32r") == "y":
+        configs["ISA"] = '"loongarch32r"'
+        configs["ISA64"] = "n"
+    return configs
+
 def main():
     # Paths
     # Assuming script is in scripts/ and run from project root or scripts/
     script_dir = Path(__file__).parent.resolve()
     remu_home = script_dir.parent
     
-    config_file = remu_home / '.config'
+    config_file = Path(os.environ.get('REMU_CONFIG_FILE', remu_home / '.config')).resolve()
     # Ensure src/generated exists
     output_dir = remu_home / 'src' / 'generated'
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -167,7 +193,7 @@ def main():
     print(f"Reading config from: {config_file}")
     
     # Parse config
-    configs = parse_config(config_file)
+    configs = apply_derived_configs(parse_config(config_file))
     
     # Generate Rust code
     rust_code = generate_rust_code(configs)

@@ -32,10 +32,15 @@ pub fn init_vga() {
     }
 
     // Register VMEM (Framebuffer)
-    register_mmio("vmem", FB_ADDR, 0x200000, Box::new(vmem_callback));
+    register_mmio("vmem", FB_ADDR as PAddr, 0x200000, Box::new(vmem_callback));
 
     // Register VGA Control
-    register_mmio("vga_ctl", VGA_CTL_MMIO, 8, Box::new(vga_ctl_callback));
+    register_mmio(
+        "vga_ctl",
+        VGA_CTL_MMIO as PAddr,
+        8,
+        Box::new(vga_ctl_callback),
+    );
 
     // vmem is cleared to 0 (black/transparent) by vec! default
 
@@ -50,7 +55,7 @@ pub fn init_vga() {
 }
 
 fn vmem_callback(addr: PAddr, len: usize, is_write: bool, data: Word) -> Word {
-    let offset = (addr - FB_ADDR) as usize;
+    let offset = (addr - FB_ADDR as PAddr) as usize;
     let mut state = VGA_STATE.lock().unwrap();
 
     // Resize vmem if needed (or just ensure capacity)
@@ -89,12 +94,12 @@ fn vmem_callback(addr: PAddr, len: usize, is_write: bool, data: Word) -> Word {
 }
 
 fn vga_ctl_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
-    let offset = (addr - VGA_CTL_MMIO) as u32;
+    let offset = (addr - VGA_CTL_MMIO as PAddr) as u32;
     let mut state = VGA_STATE.lock().unwrap();
 
     if is_write {
         if offset == VGA_CTL_SYNC {
-            state.sync = data;
+            state.sync = data as u32;
             // Note: We do NOT update screen here immediately.
             // We wait for vga_update_screen called by device_update (throttled).
             // This prevents performance kill if guest syncs every pixel.
@@ -102,8 +107,8 @@ fn vga_ctl_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Wor
         0
     } else {
         match offset {
-            VGA_CTL_SIZE => (state.width << 16) | state.height,
-            VGA_CTL_SYNC => state.sync,
+            VGA_CTL_SIZE => ((state.width << 16) | state.height) as Word,
+            VGA_CTL_SYNC => state.sync as Word,
             _ => 0,
         }
     }

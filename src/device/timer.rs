@@ -20,7 +20,7 @@ pub fn init_timer() {
         return;
     }
 
-    register_mmio("rtc", RTC_MMIO, 8, Box::new(rtc_callback));
+    register_mmio("rtc", RTC_MMIO as PAddr, 8, Box::new(rtc_callback));
 }
 
 fn rtc_callback(addr: PAddr, _len: usize, is_write: bool, _data: Word) -> Word {
@@ -28,9 +28,9 @@ fn rtc_callback(addr: PAddr, _len: usize, is_write: bool, _data: Word) -> Word {
         // RTC is read-only
         0
     } else {
-        let offset = addr - RTC_MMIO;
+        let offset = addr - RTC_MMIO as PAddr;
         if offset == 0 || offset == 4 {
-            get_time_u32(if offset == 0 { 0 } else { 1 })
+            get_time_u32(if offset == 0 { 0 } else { 1 }) as Word
         } else {
             0
         }

@@ -114,7 +114,7 @@ pub fn init_serial() {
         return;
     }
 
-    register_mmio("serial", SERIAL_MMIO, 8, Box::new(serial_callback));
+    register_mmio("serial", SERIAL_MMIO as PAddr, 8, Box::new(serial_callback));
 }
 
 pub fn serial_update() {
@@ -127,7 +127,7 @@ pub fn serial_update() {
 }
 
 fn serial_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
-    let offset = addr - SERIAL_MMIO;
+    let offset = addr - SERIAL_MMIO as PAddr;
     let mut state = SERIAL.lock().unwrap();
     if is_write {
         let value = data as u8;

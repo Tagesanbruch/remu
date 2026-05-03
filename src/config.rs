@@ -56,36 +56,37 @@ pub struct Config {
 
 // Runtime configuration from generated/config.rs
 // We use the crate root to access the generated module
+use crate::common::PAddr;
 use crate::generated::config::*;
 
 #[derive(Debug)]
 pub struct RuntimeConfig {
-    pub mbase: u32,
-    pub msize: u32,
-    pub pc_reset_offset: u32,
+    pub mbase: PAddr,
+    pub msize: u64,
+    pub pc_reset_offset: PAddr,
     pub mem_random: bool,
 
     pub trace_start: u64,
     pub trace_end: u64,
 
     pub has_serial: bool,
-    pub serial_mmio: u32,
+    pub serial_mmio: PAddr,
 
     pub has_timer: bool,
-    pub rtc_mmio: u32,
+    pub rtc_mmio: PAddr,
 
     pub has_keyboard: bool,
-    pub keyboard_mmio: u32,
+    pub keyboard_mmio: PAddr,
 
     pub has_vga: bool,
-    pub fb_addr: u32,
-    pub vgactl_mmio: u32,
+    pub fb_addr: PAddr,
+    pub vgactl_mmio: PAddr,
 
     pub has_audio: bool,
-    pub audio_addr: u32,
+    pub audio_addr: PAddr,
 
     pub has_disk: bool,
-    pub disk_mmio: u32,
+    pub disk_mmio: PAddr,
 
     pub has_clint: bool,
     pub has_plic: bool,
@@ -94,32 +95,32 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            mbase: MBASE,
-            msize: MSIZE,
-            pc_reset_offset: PC_RESET_OFFSET,
+            mbase: MBASE as PAddr,
+            msize: MSIZE as u64,
+            pc_reset_offset: PC_RESET_OFFSET as PAddr,
             mem_random: MEM_RANDOM,
 
             trace_start: TRACE_START,
             trace_end: TRACE_END,
 
             has_serial: HAS_SERIAL,
-            serial_mmio: SERIAL_MMIO,
+            serial_mmio: SERIAL_MMIO as PAddr,
 
             has_timer: HAS_TIMER,
-            rtc_mmio: RTC_MMIO,
+            rtc_mmio: RTC_MMIO as PAddr,
 
             has_keyboard: HAS_KEYBOARD,
-            keyboard_mmio: I8042_DATA_MMIO,
+            keyboard_mmio: I8042_DATA_MMIO as PAddr,
 
             has_vga: HAS_VGA,
-            fb_addr: FB_ADDR,
-            vgactl_mmio: VGA_CTL_MMIO,
+            fb_addr: FB_ADDR as PAddr,
+            vgactl_mmio: VGA_CTL_MMIO as PAddr,
 
             has_audio: HAS_AUDIO,
-            audio_addr: SB_ADDR,
+            audio_addr: SB_ADDR as PAddr,
 
             has_disk: HAS_DISK,
-            disk_mmio: DISK_CTL_MMIO,
+            disk_mmio: DISK_CTL_MMIO as PAddr,
 
             has_clint: HAS_CLINT,
             has_plic: HAS_PLIC,
@@ -133,6 +134,6 @@ pub fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
 }
 
 // Reset vector = MBASE + PC_RESET_OFFSET
-pub fn reset_vector(cfg: &RuntimeConfig) -> u32 {
+pub fn reset_vector(cfg: &RuntimeConfig) -> PAddr {
     cfg.mbase + cfg.pc_reset_offset
 }

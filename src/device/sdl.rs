@@ -1,9 +1,9 @@
 // SDL2 Backend for REMU
 
-use crate::generated::config::*;
-
 #[cfg(feature = "device")]
 use crate::common::RemuState;
+#[cfg(feature = "device")]
+use crate::generated::config::*;
 #[cfg(feature = "device")]
 use crate::utils::set_state;
 #[cfg(feature = "device")]

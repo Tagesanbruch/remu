@@ -30,14 +30,14 @@ pub fn register_mmio(
     maps.push(MmioMap {
         name: name.to_string(),
         start,
-        end: start + len as u32,
+        end: start + len as PAddr,
         callback,
     });
     crate::Log!(
         "Add mmio map '{}' at [0x{:08x}, 0x{:08x}]",
         name,
         start,
-        start + len as u32 - 1
+        start + len as PAddr - 1
     );
 }
 

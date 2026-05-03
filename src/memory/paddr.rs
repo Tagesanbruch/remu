@@ -2,26 +2,25 @@
 
 use crate::common::{PAddr, Word};
 use crate::generated::config::*;
-use crate::generated::config::*;
 // use std::sync::{Arc, Mutex}; // Removed Mutex lock
 
 // Memory regions
-const MROM_BASE: u32 = 0x20000000;
+const MROM_BASE: PAddr = 0x20000000;
 const MROM_SIZE: usize = 0x1000; // 4KB
 
-const SRAM_BASE: u32 = 0x0f000000;
+const SRAM_BASE: PAddr = 0x0f000000;
 const SRAM_SIZE: usize = 0x2000; // 8KB
 
 pub struct PhysicalMemory {
     pub pmem: Vec<u8>,
     pub mrom: Vec<u8>,
     pub sram: Vec<u8>,
-    pub mbase: u32,
+    pub mbase: PAddr,
     pub msize: usize,
 }
 
 impl PhysicalMemory {
-    pub fn new(mbase: u32, msize: usize) -> Self {
+    pub fn new(mbase: PAddr, msize: usize) -> Self {
         let mut pmem = vec![0u8; msize];
 
         // Random initialization if configured
@@ -64,17 +63,17 @@ impl PhysicalMemory {
 
     #[inline]
     fn in_pmem(&self, addr: PAddr) -> bool {
-        addr >= self.mbase && addr < self.mbase + self.msize as u32
+        addr >= self.mbase && addr < self.mbase + self.msize as PAddr
     }
 
     #[inline]
     fn in_mrom(&self, addr: PAddr) -> bool {
-        addr >= MROM_BASE && addr < MROM_BASE + MROM_SIZE as u32
+        addr >= MROM_BASE && addr < MROM_BASE + MROM_SIZE as PAddr
     }
 
     #[inline]
     fn in_sram(&self, addr: PAddr) -> bool {
-        addr >= SRAM_BASE && addr < SRAM_BASE + SRAM_SIZE as u32
+        addr >= SRAM_BASE && addr < SRAM_BASE + SRAM_SIZE as PAddr
     }
 
     pub fn read(&self, addr: PAddr, len: usize) -> Word {
@@ -88,7 +87,11 @@ impl PhysicalMemory {
                     }
                     4 => {
                         let p = ptr as *const u32;
-                        *p
+                        *p as Word
+                    }
+                    8 => {
+                        let p = ptr as *const u64;
+                        *p as Word
                     }
                     _ => {
                         log::error!("Invalid read length: {}", len);
@@ -123,7 +126,11 @@ impl PhysicalMemory {
                     }
                     4 => {
                         let p = ptr as *mut u32;
-                        *p = data;
+                        *p = data as u32;
+                    }
+                    8 => {
+                        let p = ptr as *mut u64;
+                        *p = data as u64;
                     }
                     _ => {
                         log::error!("Invalid write length: {}", len);
@@ -146,7 +153,7 @@ pub static mut PMEM: Option<PhysicalMemory> = None;
 
 pub fn init() {
     unsafe {
-        PMEM = Some(PhysicalMemory::new(MBASE, MSIZE as usize));
+        PMEM = Some(PhysicalMemory::new(MBASE as PAddr, MSIZE as usize));
     }
 }
 

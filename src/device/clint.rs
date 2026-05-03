@@ -7,9 +7,10 @@ use lazy_static::lazy_static;
 use std::sync::{Arc, Mutex};
 
 // Register offsets
-const CLINT_MSIP: u32 = 0x0000;
-const CLINT_MTIMECMP: u32 = 0x4000;
-const CLINT_MTIME: u32 = 0xbff8;
+const CLINT_BASE: PAddr = 0x02000000;
+const CLINT_MSIP: PAddr = 0x0000;
+const CLINT_MTIMECMP: PAddr = 0x4000;
+const CLINT_MTIME: PAddr = 0xbff8;
 
 struct ClintState {
     mtimecmp: u64,
@@ -29,17 +30,17 @@ pub fn init_clint() {
     }
 
     // 0x02000000 - 0x0200ffff (64KB)
-    register_mmio("clint", 0x02000000, 0x10000, Box::new(clint_callback));
+    register_mmio("clint", CLINT_BASE, 0x10000, Box::new(clint_callback));
 }
 
 fn clint_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word {
-    let offset = addr - 0x02000000;
+    let offset = addr - CLINT_BASE;
     let mut state = CLINT.lock().unwrap();
 
     if is_write {
         match offset {
             CLINT_MSIP => {
-                state.msip = data;
+                state.msip = data as u32;
             }
             _ if offset == CLINT_MTIMECMP => {
                 // Lower 32 bits
@@ -54,14 +55,14 @@ fn clint_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word 
         0
     } else {
         match offset {
-            CLINT_MSIP => state.msip,
-            CLINT_MTIME => crate::device::timer::get_time_u32(0),
+            CLINT_MSIP => state.msip as Word,
+            CLINT_MTIME => crate::device::timer::get_time_u32(0) as Word,
             0xbffc => {
                 // CLINT_MTIME + 4
-                crate::device::timer::get_time_u32(1)
+                crate::device::timer::get_time_u32(1) as Word
             }
-            _ if offset == CLINT_MTIMECMP => (state.mtimecmp & 0xFFFFFFFF) as u32,
-            _ if offset == CLINT_MTIMECMP + 4 => (state.mtimecmp >> 32) as u32,
+            _ if offset == CLINT_MTIMECMP => (state.mtimecmp & 0xFFFFFFFF) as Word,
+            _ if offset == CLINT_MTIMECMP + 4 => (state.mtimecmp >> 32) as Word,
             _ => 0,
         }
     }
@@ -69,7 +70,7 @@ fn clint_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word 
 
 // Public API for timer update to call periodically?
 pub fn clint_check_intr() {
-    let mut state = CLINT.lock().unwrap();
+    let state = CLINT.lock().unwrap();
     let _ = state.msip; // Dummy read
                         // check_timer_intr(&state); // Internal check only modifies state
 }

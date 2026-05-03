@@ -9,11 +9,11 @@ pub fn init_disk() {
         return;
     }
 
-    register_mmio("disk", DISK_CTL_MMIO, 8, Box::new(disk_callback));
+    register_mmio("disk", DISK_CTL_MMIO as PAddr, 8, Box::new(disk_callback));
 }
 
 fn disk_callback(addr: PAddr, _len: usize, is_write: bool, _data: Word) -> Word {
-    let _offset = addr - DISK_CTL_MMIO;
+    let _offset = addr - DISK_CTL_MMIO as PAddr;
     if is_write {
         0
     } else {

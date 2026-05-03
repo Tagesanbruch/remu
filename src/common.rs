@@ -1,10 +1,60 @@
 // Common types and macros
 
-// Word type for RISC-V32
-pub type PAddr = u32;
-pub type VAddr = u32;
-pub type Word = u32;
-pub type SWord = i32;
+// Architectural word/address types.  RV32 execution masks register writes back
+// to 32 bits, while RV64 uses the full value.
+pub type PAddr = u64;
+pub type VAddr = u64;
+pub type Word = u64;
+pub type SWord = i64;
+
+pub fn xlen() -> u32 {
+    if crate::generated::config::RV64 {
+        64
+    } else {
+        32
+    }
+}
+
+pub fn xlen_mask() -> Word {
+    if crate::generated::config::RV64 {
+        u64::MAX
+    } else {
+        0xffff_ffff
+    }
+}
+
+pub fn mask_xlen(value: Word) -> Word {
+    value & xlen_mask()
+}
+
+pub fn sign_extend(value: Word, width: u32) -> Word {
+    if width == 0 || width >= 64 {
+        value
+    } else {
+        let shift = 64 - width;
+        (((value << shift) as i64) >> shift) as Word
+    }
+}
+
+pub fn sign_extend_xlen(value: Word) -> Word {
+    if crate::generated::config::RV64 {
+        value
+    } else {
+        sign_extend(value & 0xffff_ffff, 32)
+    }
+}
+
+pub fn as_signed_xlen(value: Word) -> SWord {
+    if crate::generated::config::RV64 {
+        value as i64
+    } else {
+        (value as u32 as i32) as i64
+    }
+}
+
+pub fn sext32(value: u32) -> Word {
+    (value as i32 as i64) as Word
+}
 
 // CPU state enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
