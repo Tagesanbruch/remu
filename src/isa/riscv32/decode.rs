@@ -1,6 +1,6 @@
 // RISC-V instruction decoder
 
-use crate::common::Word;
+use crate::common::{sign_extend, Word};
 
 #[derive(Debug, Clone, Copy)]
 pub enum InstType {
@@ -27,13 +27,12 @@ pub struct DecodedInst {
 
 #[inline]
 fn bits(val: Word, hi: u32, lo: u32) -> Word {
-    (val >> lo) & ((1 << (hi - lo + 1)) - 1)
+    (val >> lo) & ((1_u64 << (hi - lo + 1)) - 1)
 }
 
 #[inline]
 fn sext(val: Word, width: u32) -> Word {
-    let shift = 32 - width;
-    ((val << shift) as i32 >> shift) as u32
+    sign_extend(val, width)
 }
 
 impl DecodedInst {
@@ -80,7 +79,7 @@ impl DecodedInst {
     }
 
     pub fn decode_u(&mut self) {
-        self.imm = sext(bits(self.inst, 31, 12), 20) << 12;
+        self.imm = sext(bits(self.inst, 31, 12) << 12, 32);
         self.typ = InstType::TypeU;
     }
 

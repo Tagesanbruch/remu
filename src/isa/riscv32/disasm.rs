@@ -18,10 +18,10 @@ fn reg_name(reg: u32) -> &'static str {
 /// Disassemble a single RISC-V32 instruction
 pub fn disasm(inst: Word, _pc: Word) -> String {
     let opcode = inst & 0x7f;
-    let rd = (inst >> 7) & 0x1f;
+    let rd = ((inst >> 7) & 0x1f) as u32;
     let funct3 = (inst >> 12) & 0x7;
-    let rs1 = (inst >> 15) & 0x1f;
-    let rs2 = (inst >> 20) & 0x1f;
+    let rs1 = ((inst >> 15) & 0x1f) as u32;
+    let rs2 = ((inst >> 20) & 0x1f) as u32;
     let funct7 = (inst >> 25) & 0x7f;
 
     // Extract immediates with sign extension
