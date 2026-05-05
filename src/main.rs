@@ -35,6 +35,8 @@ fn main() {
 
     Log!("REMU starting...");
 
+    crate::utils::sandbox::init(config.sandbox_report.clone(), config.stop_on_serial.clone());
+
     if config.no_display {
         std::env::set_var("REMU_NO_DISPLAY", "1");
     }
@@ -46,6 +48,7 @@ fn main() {
     // Register Ctrl+C handler
     ctrlc::set_handler(move || {
         crate::cpu::execute::statistic();
+        crate::utils::sandbox::export_reports();
         crate::device::sdl::quit();
         std::process::exit(0);
     })
@@ -53,6 +56,8 @@ fn main() {
 
     // Start the engine (debugger or batch mode)
     engine::start(&config);
+
+    crate::utils::sandbox::export_reports();
 
     // Check exit status
     let exit_code = if monitor::is_exit_status_bad() { 1 } else { 0 };

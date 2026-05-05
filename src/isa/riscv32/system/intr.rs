@@ -94,6 +94,7 @@ pub fn isa_raise_intr_with_tval(
         // Trap to S-mode
         // crate::Log!("INTR: Delegated to S-mode Cause 0x{:x} at 0x{:08x}", cause_code, epc);
         crate::utils::intr_trace::trace_intr(cause_code, epc, is_intr);
+        crate::utils::sandbox::record_interrupt(cause_code, is_intr);
         cpu.csr[CSR_SCAUSE as usize] = no;
         cpu.csr[CSR_SEPC as usize] = epc;
         cpu.csr[CSR_STVAL as usize] = tval;
@@ -120,6 +121,7 @@ pub fn isa_raise_intr_with_tval(
         // Trap to M-mode
         // crate::Log!("INTR: {} -> M-mode Cause 0x{:x} at 0x{:08x}", if is_intr { "Intr" } else { "Excp" }, cause_code, epc);
         crate::utils::intr_trace::trace_intr(cause_code, epc, is_intr);
+        crate::utils::sandbox::record_interrupt(cause_code, is_intr);
         cpu.csr[CSR_MCAUSE as usize] = no;
         cpu.csr[CSR_MEPC as usize] = epc;
         cpu.csr[CSR_MTVAL as usize] = tval;

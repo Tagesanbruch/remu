@@ -47,6 +47,7 @@ pub fn mmio_read(addr: PAddr, len: usize) -> Word {
         if addr >= map.start && addr < map.end {
             let ret = (map.callback)(addr, len, false, 0);
             crate::utils::dtrace::trace_dtrace(addr, len, ret, false, &map.name);
+            crate::utils::sandbox::record_mmio(&map.name, false, len);
             return ret;
         }
     }
@@ -62,6 +63,7 @@ pub fn mmio_write(addr: PAddr, len: usize, data: Word) {
         if addr >= map.start && addr < map.end {
             (map.callback)(addr, len, true, data);
             crate::utils::dtrace::trace_dtrace(addr, len, data, true, &map.name);
+            crate::utils::sandbox::record_mmio(&map.name, true, len);
             return;
         }
     }

@@ -10,6 +10,10 @@ use std::time::Instant;
 static mut GUEST_INST_COUNT: u64 = 0;
 static mut HOST_START_TIME: Option<Instant> = None;
 
+pub fn guest_inst_count() -> u64 {
+    unsafe { GUEST_INST_COUNT }
+}
+
 pub fn init_cpu() {
     Log!("Initializing CPU...");
     let cpu = CPU.lock().unwrap();

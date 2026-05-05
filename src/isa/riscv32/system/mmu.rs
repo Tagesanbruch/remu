@@ -72,18 +72,21 @@ impl SplitTlb {
         let entry = bank[idx];
         if !entry.valid || entry.satp_key != satp_key || !entry.allows(type_) {
             crate::utils::tlb_trace::trace_tlb(vaddr, 0, type_, false);
+            crate::utils::sandbox::record_tlb(type_, false);
             TLB_MISS.fetch_add(1, Ordering::Relaxed);
             return None;
         }
 
         if (vaddr & !entry.page_mask) != entry.vbase {
             crate::utils::tlb_trace::trace_tlb(vaddr, 0, type_, false);
+            crate::utils::sandbox::record_tlb(type_, false);
             TLB_MISS.fetch_add(1, Ordering::Relaxed);
             return None;
         }
 
         let paddr = entry.pbase | (vaddr & entry.page_mask);
         crate::utils::tlb_trace::trace_tlb(vaddr, paddr, type_, true);
+        crate::utils::sandbox::record_tlb(type_, true);
         TLB_HIT.fetch_add(1, Ordering::Relaxed);
         Some(paddr)
     }
@@ -154,10 +157,12 @@ pub fn isa_mmu_translate(
 
     if let Some(paddr) = TLB.lock().unwrap().lookup(key, vaddr, type_) {
         crate::utils::mmu_trace::trace_mmu(vaddr, paddr, type_, true);
+        crate::utils::sandbox::record_mmu_translate(vaddr, paddr, type_, true);
         return Ok(paddr);
     }
 
     PAGE_WALK.fetch_add(1, Ordering::Relaxed);
+    crate::utils::sandbox::record_page_walk(type_);
     let walk = if crate::generated::config::RV64 {
         translate_sv39(satp, vaddr, type_)
     } else {
@@ -175,10 +180,12 @@ pub fn isa_mmu_translate(
                 type_,
             );
             crate::utils::mmu_trace::trace_mmu(vaddr, result.paddr, type_, true);
+            crate::utils::sandbox::record_mmu_translate(vaddr, result.paddr, type_, true);
             Ok(result.paddr)
         }
         Err(cause) => {
             crate::utils::mmu_trace::trace_mmu(vaddr, 0, type_, false);
+            crate::utils::sandbox::record_mmu_translate(vaddr, 0, type_, false);
             Err(cause)
         }
     }

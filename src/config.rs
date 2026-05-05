@@ -49,6 +49,16 @@ pub struct Config {
     #[arg(long = "sdb-script", value_name = "FILE")]
     pub sdb_script: Option<std::path::PathBuf>,
 
+    /// Directory for REMU-Sandbox profiling reports.
+    #[arg(long = "sandbox-report", value_name = "DIR")]
+    pub sandbox_report: Option<std::path::PathBuf>,
+
+    /// Stop execution when the guest serial output matches this pattern.
+    /// The first implementation supports literal matching, '|' alternatives,
+    /// and simple '.*' ordered fragments.
+    #[arg(long = "stop-on-serial", value_name = "REGEX")]
+    pub stop_on_serial: Option<String>,
+
     /// Image file to load (positional argument)
     #[arg(value_name = "IMAGE")]
     pub image: Option<std::path::PathBuf>,
