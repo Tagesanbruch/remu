@@ -17,6 +17,11 @@ struct ClintState {
     msip: u32,
 }
 
+pub struct ClintSnapshot {
+    pub mtimecmp: u64,
+    pub msip: u32,
+}
+
 lazy_static! {
     static ref CLINT: Arc<Mutex<ClintState>> = Arc::new(Mutex::new(ClintState {
         mtimecmp: 0,
@@ -81,4 +86,18 @@ pub fn get_mip_status() -> Word {
     let mtip = if now >= state.mtimecmp { 1 << 7 } else { 0 };
     let msip = if (state.msip & 1) != 0 { 1 << 3 } else { 0 };
     mtip | msip
+}
+
+pub fn snapshot_state() -> ClintSnapshot {
+    let state = CLINT.lock().unwrap();
+    ClintSnapshot {
+        mtimecmp: state.mtimecmp,
+        msip: state.msip,
+    }
+}
+
+pub fn restore_state(snapshot: ClintSnapshot) {
+    let mut state = CLINT.lock().unwrap();
+    state.mtimecmp = snapshot.mtimecmp;
+    state.msip = snapshot.msip;
 }

@@ -18,3 +18,11 @@ pub fn set_seip(val: bool) {
 pub fn get_intr_state() -> u32 {
     INTR_STATE.load(Ordering::Relaxed)
 }
+
+pub fn snapshot_state() -> u32 {
+    INTR_STATE.load(Ordering::Relaxed)
+}
+
+pub fn restore_state(value: u32) {
+    INTR_STATE.store(value, Ordering::Relaxed);
+}

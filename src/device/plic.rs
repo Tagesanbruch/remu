@@ -113,6 +113,15 @@ impl PlicState {
     }
 }
 
+pub struct PlicSnapshot {
+    pub priority: [u32; MAX_SOURCE],
+    pub pending: u64,
+    pub line_level: u64,
+    pub claimed: u64,
+    pub enable: [u64; CONTEXTS],
+    pub threshold: [u32; CONTEXTS],
+}
+
 lazy_static::lazy_static! {
     static ref PLIC: Mutex<PlicState> = Mutex::new(PlicState::new());
 }
@@ -278,3 +287,29 @@ fn context_reg(offset: u32) -> Option<(usize, u32)> {
 fn refresh_external_irq_locked(state: &PlicState) {
     crate::device::intr::set_seip(state.has_claimable_irq());
 }
+
+pub fn snapshot_state() -> PlicSnapshot {
+    let state = PLIC.lock().unwrap();
+    PlicSnapshot {
+        priority: state.priority,
+        pending: state.pending,
+        line_level: state.line_level,
+        claimed: state.claimed,
+        enable: state.enable,
+        threshold: state.threshold,
+    }
+}
+
+pub fn restore_state(snapshot: PlicSnapshot) {
+    let mut state = PLIC.lock().unwrap();
+    state.priority = snapshot.priority;
+    state.pending = snapshot.pending;
+    state.line_level = snapshot.line_level;
+    state.claimed = snapshot.claimed;
+    state.enable = snapshot.enable;
+    state.threshold = snapshot.threshold;
+    refresh_external_irq_locked(&state);
+}
+
+pub const SNAPSHOT_MAX_SOURCE: usize = MAX_SOURCE;
+pub const SNAPSHOT_CONTEXTS: usize = CONTEXTS;

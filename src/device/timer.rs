@@ -4,7 +4,7 @@ use crate::common::{PAddr, Word};
 use crate::generated::config::*;
 use crate::memory::mmio::register_mmio;
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 lazy_static::lazy_static! {
     static ref BOOT_TIME: Mutex<Option<Instant>> = Mutex::new(None);
@@ -56,4 +56,13 @@ pub fn get_time_u32(idx: usize) -> u32 {
     } else {
         (us >> 32) as u32
     }
+}
+
+pub fn snapshot_elapsed_us() -> u64 {
+    get_time_u64()
+}
+
+pub fn restore_elapsed_us(elapsed_us: u64) {
+    let mut boot_time = BOOT_TIME.lock().unwrap();
+    *boot_time = Some(Instant::now() - Duration::from_micros(elapsed_us));
 }
