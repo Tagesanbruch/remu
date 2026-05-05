@@ -9,6 +9,8 @@ pub mod log;
 pub mod mmu_trace;
 pub mod mtrace;
 pub mod ringbuffer;
+pub mod sandbox;
+pub mod snapshot;
 pub mod state;
 pub mod tlb_trace;
 

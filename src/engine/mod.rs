@@ -84,6 +84,11 @@ fn sdb_mainloop(_cfg: &Config) {
 }
 
 fn handle_command(cmd: &str) -> bool {
+    if let Some(text) = cmd.strip_prefix("sendstr ") {
+        send_string(text);
+        return true;
+    }
+
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() {
         return true;
@@ -135,6 +140,12 @@ fn handle_command(cmd: &str) -> bool {
         "trace" => {
             crate::utils::print_trace_summary(parts.get(1).copied());
         }
+        "savevm" => {
+            save_vm_cmd(&parts);
+        }
+        "loadvm" => {
+            load_vm_cmd(&parts);
+        }
         "x" => {
             inspect_vaddr(&parts);
         }
@@ -152,6 +163,9 @@ fn handle_command(cmd: &str) -> bool {
             println!("  info r           - Print registers");
             println!("  info csr         - Print common CSRs");
             println!("  trace [KIND]     - Dump trace ring buffers (all/itrace/dtrace/intr/mmu/tlb/ecall/ftrace)");
+            println!("  savevm PATH      - Save REMU-Sandbox snapshot");
+            println!("  loadvm PATH [--lazy] [--prefetch none|sequential|profile:CSV] [--pages N]");
+            println!("  sendstr TEXT     - Inject a string into guest serial input (supports \\n, \\r, \\t)");
             println!("  help             - Show this help");
         }
         _ => {
@@ -160,6 +174,107 @@ fn handle_command(cmd: &str) -> bool {
     }
 
     true
+}
+
+fn send_string(text: &str) {
+    let bytes = unescape_text(text);
+    crate::device::serial::enqueue_rx_bytes(&bytes);
+    println!("sent {} byte(s) to guest serial", bytes.len());
+}
+
+fn unescape_text(text: &str) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            let mut buf = [0; 4];
+            out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push(b'\n'),
+            Some('r') => out.push(b'\r'),
+            Some('t') => out.push(b'\t'),
+            Some('\\') => out.push(b'\\'),
+            Some(other) => {
+                out.push(b'\\');
+                let mut buf = [0; 4];
+                out.extend_from_slice(other.encode_utf8(&mut buf).as_bytes());
+            }
+            None => out.push(b'\\'),
+        }
+    }
+    out
+}
+
+fn save_vm_cmd(parts: &[&str]) {
+    if parts.len() != 2 {
+        println!("Usage: savevm PATH");
+        return;
+    }
+    match crate::utils::snapshot::save_vm(std::path::Path::new(parts[1])) {
+        Ok(()) => println!("snapshot saved to {}", parts[1]),
+        Err(err) => println!("savevm failed: {}", err),
+    }
+}
+
+fn load_vm_cmd(parts: &[&str]) {
+    if parts.len() < 2 {
+        println!(
+            "Usage: loadvm PATH [--lazy] [--prefetch none|sequential|profile:CSV] [--pages N]"
+        );
+        return;
+    }
+
+    let mut options = crate::utils::snapshot::LoadOptions::default();
+    let mut idx = 2;
+    while idx < parts.len() {
+        match parts[idx] {
+            "--lazy" => {
+                options.lazy = true;
+                idx += 1;
+            }
+            "--prefetch" => {
+                let Some(value) = parts.get(idx + 1) else {
+                    println!("loadvm: --prefetch needs a value");
+                    return;
+                };
+                options.prefetch = parse_prefetch_policy(value);
+                idx += 2;
+            }
+            "--pages" => {
+                let Some(value) = parts.get(idx + 1) else {
+                    println!("loadvm: --pages needs a value");
+                    return;
+                };
+                let Ok(pages) = value.parse::<usize>() else {
+                    println!("loadvm: invalid --pages value {}", value);
+                    return;
+                };
+                options.pages = pages;
+                idx += 2;
+            }
+            other => {
+                println!("loadvm: unknown option {}", other);
+                return;
+            }
+        }
+    }
+
+    match crate::utils::snapshot::load_vm(std::path::Path::new(parts[1]), &options) {
+        Ok(()) => println!("snapshot loaded from {}", parts[1]),
+        Err(err) => println!("loadvm failed: {}", err),
+    }
+}
+
+fn parse_prefetch_policy(value: &str) -> crate::utils::snapshot::PrefetchPolicy {
+    if value == "sequential" {
+        crate::utils::snapshot::PrefetchPolicy::Sequential
+    } else if let Some(path) = value.strip_prefix("profile:") {
+        crate::utils::snapshot::PrefetchPolicy::Profile(std::path::PathBuf::from(path))
+    } else {
+        crate::utils::snapshot::PrefetchPolicy::None
+    }
 }
 
 fn parse_u64(value: &str) -> Option<u64> {

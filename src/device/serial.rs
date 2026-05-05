@@ -37,6 +37,19 @@ struct SerialState {
     thre_pending: bool,
 }
 
+pub struct SerialSnapshot {
+    pub rx_fifo: Vec<u8>,
+    pub ier: u8,
+    pub fcr: u8,
+    pub lcr: u8,
+    pub mcr: u8,
+    pub dll: u8,
+    pub dlm: u8,
+    pub scr: u8,
+    pub thr_empty: bool,
+    pub thre_pending: bool,
+}
+
 impl SerialState {
     fn new() -> Self {
         Self {
@@ -139,6 +152,7 @@ fn serial_callback(addr: PAddr, _len: usize, is_write: bool, data: Word) -> Word
                     state.thr_empty = false;
                     print!("{}", value as char);
                     let _ = io::stdout().flush();
+                    crate::utils::sandbox::observe_serial_byte(value);
                     state.thr_empty = true;
                     if (state.ier & IER_THRI) != 0 {
                         state.thre_pending = true;
@@ -215,8 +229,49 @@ fn enqueue_rx_byte(ch: u8) {
     update_irq_locked(&state);
 }
 
+pub fn enqueue_rx_bytes(bytes: &[u8]) {
+    let mut state = SERIAL.lock().unwrap();
+    for &ch in bytes {
+        if state.rx_fifo.len() < FIFO_LEN {
+            state.rx_fifo.push_back(ch);
+        }
+    }
+    update_irq_locked(&state);
+}
+
 fn update_irq_locked(state: &SerialState) {
     crate::device::plic::set_irq_level(UART0_IRQ, state.irq_pending());
+}
+
+pub fn snapshot_state() -> SerialSnapshot {
+    let state = SERIAL.lock().unwrap();
+    SerialSnapshot {
+        rx_fifo: state.rx_fifo.iter().copied().collect(),
+        ier: state.ier,
+        fcr: state.fcr,
+        lcr: state.lcr,
+        mcr: state.mcr,
+        dll: state.dll,
+        dlm: state.dlm,
+        scr: state.scr,
+        thr_empty: state.thr_empty,
+        thre_pending: state.thre_pending,
+    }
+}
+
+pub fn restore_state(snapshot: SerialSnapshot) {
+    let mut state = SERIAL.lock().unwrap();
+    state.rx_fifo = snapshot.rx_fifo.into_iter().collect();
+    state.ier = snapshot.ier;
+    state.fcr = snapshot.fcr;
+    state.lcr = snapshot.lcr;
+    state.mcr = snapshot.mcr;
+    state.dll = snapshot.dll;
+    state.dlm = snapshot.dlm;
+    state.scr = snapshot.scr;
+    state.thr_empty = snapshot.thr_empty;
+    state.thre_pending = snapshot.thre_pending;
+    update_irq_locked(&state);
 }
 
 #[cfg(unix)]
